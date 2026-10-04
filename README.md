@@ -2,9 +2,11 @@
 
 把 Android 手机变成 PC 的虚拟手柄：手机端渲染并采集触摸输入，经 WiFi / ADB 送到 PC，PC 端模拟出系统认得的 DS4 / Xbox 手柄。
 
-- **PC 端**：C# / .NET（Windows 优先）
-- **移动端**：待定（Android 原生 Kotlin / .NET MAUI）
-- **状态**：方案梳理阶段，尚未写业务代码（2026-10-04）
+- **PC 端**：C# / .NET，仅 Windows
+- **移动端**：Kotlin + Android Studio，Material 3（手柄本体自绘）
+- **虚拟手柄后端**：ViGEmBus 起步，`IVirtualControllerBackend` 抽象预留 VIIPER
+- **传输**：WiFi (UDP) / ADB (TCP + `adb reverse`，USB 数据通道)
+- **状态**：立项梳理完成、关键决策已定（2026-10-04），下一步进入 P0「定契约」
 
 ## 目录
 
@@ -12,7 +14,7 @@
 docs/
   01-企划审查.md      对原始企划的事实核查与逐条问题清单
   02-技术路线.md      架构、协议、选型建议
-  03-路线图与待决策.md 分期计划 + 需要拍板的决策点
+  03-路线图与待决策.md 分期计划 + 决策记录（已定 D1/D3/D4/D5/D6/D7）
 research/             调研记录 / 参考项目源码（.gitignore 忽略）
 src/                  代码（后续按选定技术栈填充）
 ```
