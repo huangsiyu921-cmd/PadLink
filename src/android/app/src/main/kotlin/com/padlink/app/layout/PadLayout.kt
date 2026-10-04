@@ -1,8 +1,7 @@
 package com.padlink.app.layout
 
 /**
- * 手柄上可摆放的控件。
- * 每种控件的位置和大小都能改，样式能切换（见 [PadLayout]）。
+ * 手柄上可摆放的控件。位置、大小、旋转都能改。
  */
 enum class PadElementKind {
     LEFT_STICK,
@@ -36,54 +35,95 @@ enum class PadElementKind {
             STICK_LEFT_BUTTON -> "L3"
             STICK_RIGHT_BUTTON -> "R3"
         }
+
+    /** 这个控件是否由若干可以单独调整的子键组成。 */
+    val hasSubKeys: Boolean
+        get() = this == ABXY_GROUP || this == DPAD
 }
 
-/** 扳机样式：滑动条，或按住即满行程的按钮（EMotion 那种）。 */
-enum class TriggerStyle {
-    SLIDE,
-    BUTTON,
-}
+/** 扳机样式：滑动条，或按住即满行程的按钮。 */
+enum class TriggerStyle { SLIDE, BUTTON }
 
 /** 十字键样式：8 方向摇杆式，或四个独立三角分键。 */
-enum class DPadStyle {
-    COMBO,
-    TRIANGLE,
-}
+enum class DPadStyle { COMBO, TRIANGLE }
 
 /**
- * 一个控件的位置与大小。
+ * 一个控件的位置、大小、旋转。
  *
- * 坐标是**屏幕比例**（0..1，控件中心点），[size] 是相对**屏幕宽度**的比例。
- * 用比例而不是像素：换台手机不用重排，横竖屏切换也不会错位。
+ * 坐标是**屏幕比例**（0..1，控件中心点），[size] 是相对**屏幕宽度**的比例，[rotation] 是角度。
+ * 用比例而不是像素：换台手机不用重排。
  */
 data class PadElement(
     val kind: PadElementKind,
     val x: Float,
     val y: Float,
     val size: Float,
+    val rotation: Float = 0f,
+    val enabled: Boolean = true,
+)
+
+/**
+ * 子键：ABXY 或三角十字里的单个按键。
+ * [dx] / [dy] 是相对**父控件**的偏移（-0.5..0.5），[scale] 是相对父控件的直径比例。
+ */
+data class SubKey(
+    val label: String,
+    val dx: Float,
+    val dy: Float,
+    val scale: Float,
+    val enabled: Boolean = true,
 )
 
 data class PadLayout(
     val elements: List<PadElement>,
+    val subKeys: Map<PadElementKind, List<SubKey>> = emptyMap(),
     val triggerStyle: TriggerStyle = TriggerStyle.SLIDE,
     val dpadStyle: DPadStyle = DPadStyle.COMBO,
 ) {
-    fun move(kind: PadElementKind, x: Float, y: Float): PadLayout = copy(
-        elements = elements.map {
-            if (it.kind == kind) it.copy(x = x.coerceIn(0f, 1f), y = y.coerceIn(0f, 1f)) else it
-        }
-    )
+    fun element(kind: PadElementKind): PadElement? = elements.firstOrNull { it.kind == kind }
 
-    fun resize(kind: PadElementKind, size: Float): PadLayout = copy(
-        elements = elements.map {
-            if (it.kind == kind) it.copy(size = size.coerceIn(MIN_SIZE, MAX_SIZE)) else it
-        }
-    )
+    fun move(kind: PadElementKind, x: Float, y: Float): PadLayout = update(kind) {
+        it.copy(x = x.coerceIn(0f, 1f), y = y.coerceIn(0f, 1f))
+    }
 
+    fun resize(kind: PadElementKind, size: Float): PadLayout = update(kind) {
+        it.copy(size = size.coerceIn(MIN_SIZE, MAX_SIZE))
+    }
+
+    fun rotate(kind: PadElementKind, degrees: Float): PadLayout = update(kind) {
+        it.copy(rotation = ((degrees + 180f).mod(360f)) - 180f)
+    }
+
+    fun toggleEnabled(kind: PadElementKind): PadLayout = update(kind) { it.copy(enabled = !it.enabled) }
+
+    private fun update(kind: PadElementKind, transform: (PadElement) -> PadElement): PadLayout =
+        copy(elements = elements.map { if (it.kind == kind) transform(it) else it })
+
+    fun updateSubKey(kind: PadElementKind, index: Int, transform: (SubKey) -> SubKey): PadLayout {
+        val keys = subKeys[kind] ?: return this
+        if (index !in keys.indices) return this
+        return copy(subKeys = subKeys + (kind to keys.mapIndexed { i, key -> if (i == index) transform(key) else key }))
+    }
+
+    /**
+     * 导出为一段可读文本。用户在设置里点「导出」拿到它，直接贴回给我，
+     * 我把它固化成 [Default]——所以格式要稳定、可整块替换。
+     */
     fun encode(): String = buildString {
+        appendLine("# PadLink layout")
+        elements.forEach { element ->
+            appendLine(
+                "${element.kind.name},${element.x},${element.y},${element.size}," +
+                    "${element.rotation},${element.enabled}"
+            )
+        }
         appendLine("trigger=${triggerStyle.name}")
         appendLine("dpad=${dpadStyle.name}")
-        elements.forEach { appendLine("${it.kind.name},${it.x},${it.y},${it.size}") }
+        subKeys.forEach { (kind, keys) ->
+            keys.forEach { key ->
+                appendLine("sub,${kind.name},${key.label},${key.dx},${key.dy},${key.scale},${key.enabled}")
+            }
+        }
     }
 
     companion object {
@@ -91,71 +131,90 @@ data class PadLayout(
         const val MAX_SIZE = 0.45f
 
         /**
-         * 默认布局：照着真实手柄的手感排——两个摇杆在两侧偏下（拇指自然落点），
-         * 十字键和 ABXY 在两侧偏上，肩键/扳机贴左右上角，中间只放 Back/Start/Guide。
+         * 默认布局。刻意写成文本而不是 Kotlin 构造：用户调好导出一段文本发回来，
+         * 这里整块替换即可，不用改代码结构。
          */
-        val Default = PadLayout(
-            elements = listOf(
-                PadElement(PadElementKind.TRIGGER_LEFT, 0.062f, 0.150f, 0.105f),
-                PadElement(PadElementKind.SHOULDER_LEFT, 0.152f, 0.180f, 0.105f),
-                PadElement(PadElementKind.DPAD, 0.118f, 0.430f, 0.195f),
-                PadElement(PadElementKind.LEFT_STICK, 0.165f, 0.765f, 0.235f),
+        private const val DEFAULT_TEXT = """
+# PadLink layout
+TRIGGER_LEFT,0.062,0.15,0.105,0.0,true
+SHOULDER_LEFT,0.152,0.18,0.105,0.0,true
+DPAD,0.118,0.43,0.195,0.0,true
+LEFT_STICK,0.165,0.765,0.235,0.0,true
+TRIGGER_RIGHT,0.938,0.15,0.105,0.0,true
+SHOULDER_RIGHT,0.848,0.18,0.105,0.0,true
+ABXY_GROUP,0.882,0.43,0.225,0.0,true
+RIGHT_STICK,0.835,0.765,0.235,0.0,true
+GUIDE,0.5,0.135,0.1,0.0,true
+BACK,0.43,0.56,0.09,0.0,true
+START,0.57,0.56,0.09,0.0,true
+STICK_LEFT_BUTTON,0.048,0.915,0.08,0.0,true
+STICK_RIGHT_BUTTON,0.952,0.915,0.08,0.0,true
+trigger=SLIDE
+dpad=COMBO
+sub,ABXY_GROUP,Y,0.0,-0.27,0.46,true
+sub,ABXY_GROUP,A,0.0,0.27,0.46,true
+sub,ABXY_GROUP,X,-0.27,0.0,0.46,true
+sub,ABXY_GROUP,B,0.27,0.0,0.46,true
+sub,DPAD,N,0.0,-0.33,0.34,true
+sub,DPAD,S,0.0,0.33,0.34,true
+sub,DPAD,W,-0.33,0.0,0.34,true
+sub,DPAD,E,0.33,0.0,0.34,true
+"""
 
-                PadElement(PadElementKind.TRIGGER_RIGHT, 0.938f, 0.150f, 0.105f),
-                PadElement(PadElementKind.SHOULDER_RIGHT, 0.848f, 0.180f, 0.105f),
-                PadElement(PadElementKind.ABXY_GROUP, 0.882f, 0.430f, 0.225f),
-                PadElement(PadElementKind.RIGHT_STICK, 0.835f, 0.765f, 0.235f),
+        val Default: PadLayout = decode(DEFAULT_TEXT)
 
-                PadElement(PadElementKind.GUIDE, 0.500f, 0.135f, 0.100f),
-                PadElement(PadElementKind.BACK, 0.430f, 0.560f, 0.090f),
-                PadElement(PadElementKind.START, 0.570f, 0.560f, 0.090f),
-
-                PadElement(PadElementKind.STICK_LEFT_BUTTON, 0.048f, 0.915f, 0.080f),
-                PadElement(PadElementKind.STICK_RIGHT_BUTTON, 0.952f, 0.915f, 0.080f),
-            ),
-        )
-
-        /** 从 [encode] 的文本还原；有任何一行读不懂就整体退回 [Default]。 */
+        /**
+         * 解析 [encode] 的输出。旧版本存档少字段也能读（缺的补默认），
+         * 单行读不懂就跳过该行，不至于整个布局报废。
+         */
         fun decode(text: String): PadLayout {
             val elements = mutableListOf<PadElement>()
+            val subKeys = mutableMapOf<PadElementKind, MutableList<SubKey>>()
             var trigger = TriggerStyle.SLIDE
             var dpad = DPadStyle.COMBO
 
             text.lineSequence().forEach { rawLine ->
                 val line = rawLine.trim()
-                if (line.isEmpty()) return@forEach
-
+                if (line.isEmpty() || line.startsWith("#")) return@forEach
                 val parts = line.split(',')
-                when (parts[0]) {
-                    "trigger" -> trigger = if (parts.size == 2) {
-                        TriggerStyle.entries.firstOrNull { it.name == parts[1] } ?: TriggerStyle.SLIDE
-                    } else {
-                        TriggerStyle.SLIDE
+
+                when {
+                    parts[0] == "trigger" && parts.size == 2 ->
+                        trigger = TriggerStyle.entries.firstOrNull { it.name == parts[1] } ?: trigger
+
+                    parts[0] == "dpad" && parts.size == 2 ->
+                        dpad = DPadStyle.entries.firstOrNull { it.name == parts[1] } ?: dpad
+
+                    parts[0] == "sub" && parts.size >= 6 -> {
+                        val kind = PadElementKind.entries.firstOrNull { it.name == parts[1] } ?: return@forEach
+                        val dx = parts[3].toFloatOrNull() ?: return@forEach
+                        val dy = parts[4].toFloatOrNull() ?: return@forEach
+                        val scale = parts[5].toFloatOrNull() ?: return@forEach
+                        val enabled = parts.getOrNull(6)?.toBooleanStrictOrNull() ?: true
+
+                        subKeys.getOrPut(kind) { mutableListOf() } += SubKey(parts[2], dx, dy, scale, enabled)
                     }
 
-                    "dpad" -> dpad = if (parts.size == 2) {
-                        DPadStyle.entries.firstOrNull { it.name == parts[1] } ?: DPadStyle.COMBO
-                    } else {
-                        DPadStyle.COMBO
-                    }
-
-                    else -> {
-                        if (parts.size != 4) return@forEach
+                    parts.size >= 4 -> {
                         val kind = PadElementKind.entries.firstOrNull { it.name == parts[0] } ?: return@forEach
                         val x = parts[1].toFloatOrNull() ?: return@forEach
                         val y = parts[2].toFloatOrNull() ?: return@forEach
                         val size = parts[3].toFloatOrNull() ?: return@forEach
-                        elements += PadElement(kind, x, y, size)
+                        val rotation = parts.getOrNull(4)?.toFloatOrNull() ?: 0f
+                        val enabled = parts.getOrNull(5)?.toBooleanStrictOrNull() ?: true
+
+                        elements += PadElement(kind, x, y, size, rotation, enabled)
                     }
                 }
             }
 
             // 缺控件就补默认位置，免得升级后旧存档少几个键。
-            val missing = Default.elements.filter { default ->
-                elements.none { it.kind == default.kind }
-            }
+            val missing = Default.elements.filter { def -> elements.none { it.kind == def.kind } }
+            val mergedSubKeys = Default.subKeys.mapValues { (kind, defaults) ->
+                subKeys[kind] ?: defaults
+            } + subKeys.filterKeys { it !in Default.subKeys }
 
-            return PadLayout(elements + missing, trigger, dpad)
+            return PadLayout(elements + missing, mergedSubKeys, trigger, dpad)
         }
     }
 }

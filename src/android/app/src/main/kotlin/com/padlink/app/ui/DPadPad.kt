@@ -16,14 +16,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import com.padlink.core.DPad
-import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.hypot
 import kotlin.math.min
 
 /**
- * 十字键。转成 8 方向枚举（protocol.md §5.3）——比四个独立布尔更贴合真实十字键，
- * 也不会出现"同时按下上和下"这种物理上不可能的组合。
+ * 十字键·8 方向样式。转成 8 方向枚举（protocol.md §5.3），
+ * 比四个独立布尔更贴合真实十字键，也不会出现"同时按下上和下"这种组合。
+ *
+ * 按下反馈是一片从圆心扇出去的 45° 扇形，加中心点变色——之前那圈小弧太不显眼了。
  */
 @Composable
 fun DPadPad(
@@ -73,37 +74,37 @@ fun DPadPad(
         val center = Offset(size.width / 2f, size.height / 2f)
         val radius = min(size.width, size.height) / 2f
 
-        drawCircle(color = Color(0xFF1E1E1E), radius = radius, center = center)
-        drawCircle(color = Color(0xFF3A3A3A), radius = radius, center = center, style = Stroke(radius * 0.06f))
+        drawCircle(color = PadColors.StickBase, radius = radius, center = center)
 
-        // 十字提示：上下左右四个短条
-        val armColor = Color(0xFF3A3A3A)
-        val arm = radius * 0.5f
-        val thickness = radius * 0.14f
-        drawRect(armColor, Offset(center.x - thickness / 2f, center.y - arm),
-            Size(thickness, arm - thickness))
-        drawRect(armColor, Offset(center.x - thickness / 2f, center.y + thickness / 2f),
-            Size(thickness, arm - thickness))
-        drawRect(armColor, Offset(center.x - arm, center.y - thickness / 2f),
-            Size(arm - thickness, thickness))
-        drawRect(armColor, Offset(center.x + thickness / 2f, center.y - thickness / 2f),
-            Size(arm - thickness, thickness))
-
-        // 当前方向高亮：画一段圆弧指向那个方向。
+        // 按下方向的扇形，垫在内圈下面，看起来像外环亮了一格。
         if (active != DPad.NEUTRAL) {
-            val sweep = 44f
-            val startAngle = degreesToStartAngle(active) - sweep / 2f
             drawArc(
-                color = Color(0xFF5AA9FF),
-                startAngle = startAngle,
-                sweepAngle = sweep,
+                color = Color(0xFF3D7BFF),
+                startAngle = degreesToStartAngle(active) - 22.5f,
+                sweepAngle = 45f,
                 useCenter = true,
-                topLeft = Offset(center.x - radius * 0.28f, center.y - radius * 0.28f),
-                size = Size(radius * 0.56f, radius * 0.56f),
+                topLeft = Offset(center.x - radius, center.y - radius),
+                size = Size(radius * 2f, radius * 2f),
             )
         }
 
-        drawCircle(color = Color(0xFF2C2C2C), radius = radius * 0.12f, center = center)
+        drawCircle(color = Color(0xFF262626), radius = radius * 0.62f, center = center)
+
+        // 四个方向的臂，提示这是个十字键。
+        val arm = radius * 0.5f
+        val thickness = radius * 0.16f
+        val armColor = Color(0xFF3A3A3A)
+        drawRect(armColor, Offset(center.x - thickness / 2f, center.y - arm), Size(thickness, arm - thickness))
+        drawRect(armColor, Offset(center.x - thickness / 2f, center.y + thickness / 2f), Size(thickness, arm - thickness))
+        drawRect(armColor, Offset(center.x - arm, center.y - thickness / 2f), Size(arm - thickness, thickness))
+        drawRect(armColor, Offset(center.x + thickness / 2f, center.y - thickness / 2f), Size(arm - thickness, thickness))
+
+        drawCircle(
+            color = if (active != DPad.NEUTRAL) Color(0xFF8FC0FF) else Color(0xFF3F3F3F),
+            radius = radius * 0.15f,
+            center = center,
+        )
+        drawCircle(color = PadColors.Hairline, radius = radius, center = center, style = Stroke(radius * 0.05f))
     }
 }
 
@@ -122,7 +123,7 @@ internal fun directionFromDegrees(degrees: Double): DPad {
     }
 }
 
-/** 方向 → Compose 的 drawArc 起始角（Compose 的 0° 是三点钟方向，顺时针为正）。 */
+/** 方向 → drawArc 的起始角（Compose 的 0° 是三点钟方向，顺时针为正）。 */
 private fun degreesToStartAngle(direction: DPad): Float = when (direction) {
     DPad.NORTH -> -90f
     DPad.NORTH_EAST -> -45f

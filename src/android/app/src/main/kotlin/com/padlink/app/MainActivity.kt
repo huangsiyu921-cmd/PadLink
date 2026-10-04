@@ -24,8 +24,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.padlink.app.layout.LayoutStore
 import com.padlink.app.layout.PadLayout
-import com.padlink.app.ui.ConnectionBar
+import com.padlink.app.ui.AppSettingsDialog
+import com.padlink.app.ui.ConfirmDialog
+import com.padlink.app.ui.ElementSettingsDialog
+import com.padlink.app.ui.ExportDialog
 import com.padlink.app.ui.GamepadCanvas
+import com.padlink.app.ui.Selection
+import com.padlink.app.ui.TopBar
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -59,31 +64,102 @@ private fun PadLinkApp() {
 
     var layout by remember { mutableStateOf(store.load()) }
     var editing by remember { mutableStateOf(false) }
+    var selection by remember { mutableStateOf<Selection?>(null) }
+
+    var showAppSettings by remember { mutableStateOf(false) }
+    var elementSettings by remember { mutableStateOf<Selection?>(null) }
+    var showExport by remember { mutableStateOf(false) }
+    var showResetConfirm by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF1C1C1C))
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
-        ConnectionBar(
+        TopBar(
             controller = controller,
-            layout = layout,
             editing = editing,
-            onEditingChange = { next ->
-                editing = next
-                // 只在退出编辑时落盘：拖拽过程中每帧写一次存储没必要。
-                if (!next) store.save(layout)
+            selection = selection,
+            onOpenSettings = { showAppSettings = true },
+            onOpenElementSettings = { selection?.let { elementSettings = it } },
+            onToggleEnabled = {
+                layout = when (val current = selection) {
+                    is Selection.Element -> layout.toggleEnabled(current.kind)
+                    is Selection.Sub -> layout.updateSubKey(current.kind, current.index) {
+                        it.copy(enabled = !it.enabled)
+                    }
+
+                    null -> layout
+                }
             },
-            onLayoutChange = { layout = it },
+            onReset = { showResetConfirm = true },
+            onExport = { showExport = true },
+            onDone = {
+                editing = false
+                selection = null
+                store.save(layout)
+            },
         )
 
         GamepadCanvas(
             controller = controller,
             layout = layout,
             editing = editing,
+            selection = selection,
+            onSelectionChange = { selection = it },
             onLayoutChange = { layout = it },
             modifier = Modifier.fillMaxSize(),
+        )
+    }
+
+    if (showAppSettings) {
+        AppSettingsDialog(
+            controller = controller,
+            layout = layout,
+            onDismiss = { showAppSettings = false },
+            onApply = {
+                layout = it
+                store.save(it)
+                showAppSettings = false
+            },
+            onEnterLayoutEdit = { draft ->
+                layout = draft
+                selection = null
+                editing = true
+                showAppSettings = false
+            },
+        )
+    }
+
+    elementSettings?.let { target ->
+        ElementSettingsDialog(
+            selection = target,
+            layout = layout,
+            onDismiss = { elementSettings = null },
+            onApply = {
+                layout = it
+                store.save(it)
+                elementSettings = null
+            },
+        )
+    }
+
+    if (showExport) {
+        ExportDialog(layout = layout, onDismiss = { showExport = false })
+    }
+
+    if (showResetConfirm) {
+        ConfirmDialog(
+            title = "重置布局",
+            message = "所有控件的位置、大小、角度都恢复默认。",
+            confirmText = "重置",
+            onConfirm = {
+                layout = PadLayout.Default
+                selection = null
+                store.save(PadLayout.Default)
+            },
+            onDismiss = { showResetConfirm = false },
         )
     }
 

@@ -2,7 +2,8 @@ package com.padlink.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,12 +14,25 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.padlink.app.PadLinkController
@@ -26,38 +40,56 @@ import com.padlink.app.layout.DPadStyle
 import com.padlink.app.layout.PadElement
 import com.padlink.app.layout.PadElementKind
 import com.padlink.app.layout.PadLayout
+import com.padlink.app.layout.SubKey
 import com.padlink.app.layout.TriggerStyle
+import com.padlink.core.DPad
 import com.padlink.core.GamepadButtons
+
+/** 编辑模式下选中的东西：整个控件，或某个控件里的一个子键。 */
+sealed interface Selection {
+    data class Element(val kind: PadElementKind) : Selection
+    data class Sub(val kind: PadElementKind, val index: Int) : Selection
+}
+
+private val SelectedBorder = Color(0xFF3D7BFF)
+private val SelectedFill = Color(0x443D7BFF)
+private val DisabledBorder = Color(0x99787878)
+
+/** 拖动判定阈值：小于这个位移就当是"点了一下"，不是拖。 */
+private const val DRAG_SLOP_PX = 12f
 
 /**
  * 按 [PadLayout] 摆放所有控件。
  *
- * [editing] 为 true 时进入布局编辑：控件只画轮廓、不响应游戏输入，
- * 单指拖动挪位置、双指捏合改大小。
+ * [editing] 为 true 时进入布局编辑：控件只画轮廓、不响应游戏输入。
+ * 点一下选中，拖一下挪位置；带子键的控件（ABXY / 三角十字）连里面的每个键都能单独选。
  */
 @Composable
 fun GamepadCanvas(
     controller: PadLinkController,
     layout: PadLayout,
     editing: Boolean,
+    selection: Selection?,
+    onSelectionChange: (Selection?) -> Unit,
     onLayoutChange: (PadLayout) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier) {
         val screenWidth = maxWidth
         val screenHeight = maxHeight
-        val density = LocalDensity.current
-        val widthPx = with(density) { screenWidth.toPx() }
-        val heightPx = with(density) { screenHeight.toPx() }
+        val screenWidthPx = with(LocalDensity.current) { screenWidth.toPx() }
+        val screenHeightPx = with(LocalDensity.current) { screenHeight.toPx() }
 
         val latestLayout by rememberUpdatedState(layout)
-        val latestOnChange by rememberUpdatedState(onLayoutChange)
+        val latestSelect by rememberUpdatedState(onSelectionChange)
+        val latestChange by rememberUpdatedState(onLayoutChange)
 
         layout.elements.forEach { element ->
             // key 保证每个控件的组合位置固定：布局一变不至于把状态串到别的控件上。
             key(element.kind) {
                 val elementWidth = screenWidth * element.size
                 val elementHeight = elementWidth * aspectOf(element.kind, layout)
+                val isSelected = selection is Selection.Element && selection.kind == element.kind
 
                 Box(
                     modifier = Modifier
@@ -66,24 +98,43 @@ fun GamepadCanvas(
                             y = screenHeight * element.y - elementHeight / 2f,
                         )
                         .size(elementWidth, elementHeight)
+                        .rotate(element.rotation)
+                        .then(if (isSelected) Modifier.selectionPaint() else Modifier)
                         .then(
                             if (editing) {
                                 Modifier.pointerInput(element.kind) {
-                                    detectTransformGestures { _, pan, zoom, _ ->
-                                        val base = latestLayout
-                                        val self = base.elements
-                                            .firstOrNull { it.kind == element.kind }
-                                            ?: return@detectTransformGestures
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown()
+                                        var moved = Offset.Zero
+                                        var dragged = false
+                                        latestSelect(Selection.Element(element.kind))
+                                        down.consume()
 
-                                        var updated = base.move(
-                                            element.kind,
-                                            self.x + pan.x / widthPx,
-                                            self.y + pan.y / heightPx,
-                                        )
-                                        if (zoom != 1f) {
-                                            updated = updated.resize(element.kind, self.size * zoom)
+                                        while (true) {
+                                            val event = awaitPointerEvent()
+                                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                            if (!change.pressed) break
+
+                                            val delta = change.positionChange()
+                                            moved += delta
+                                            if (moved.getDistance() > DRAG_SLOP_PX) {
+                                                dragged = true
+                                                val base = latestLayout
+                                                val self = base.element(element.kind)
+                                                if (self != null) {
+                                                    latestChange(
+                                                        base.move(
+                                                            element.kind,
+                                                            self.x + delta.x / screenWidthPx,
+                                                            self.y + delta.y / screenHeightPx,
+                                                        )
+                                                    )
+                                                }
+                                            }
+                                            change.consume()
                                         }
-                                        latestOnChange(updated)
+
+                                        if (!dragged) latestSelect(Selection.Element(element.kind))
                                     }
                                 }
                             } else {
@@ -91,15 +142,93 @@ fun GamepadCanvas(
                             },
                         ),
                 ) {
-                    if (editing) {
-                        ElementOutline(element)
-                    } else {
-                        ElementContent(element, layout, controller)
+                    when {
+                        editing && element.kind.hasSubKeys ->
+                            SubKeyEditor(element.kind, layout, selection, onSelectionChange, onLayoutChange)
+
+                        editing -> ElementOutline(element, isSelected)
+                        element.enabled -> ElementContent(element, layout, controller)
                     }
                 }
             }
         }
     }
+}
+
+/**
+ * 编辑带子键的控件：每个小键单独点选、单独拖。
+ * 拖动改的是子键相对父控件的偏移，所以整体挪位置时它们会跟着走。
+ */
+@Composable
+private fun SubKeyEditor(
+    kind: PadElementKind,
+    layout: PadLayout,
+    selection: Selection?,
+    onSelectionChange: (Selection?) -> Unit,
+    onLayoutChange: (PadLayout) -> Unit,
+) {
+    val keys = layout.subKeys[kind].orEmpty()
+
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val width = maxWidth
+        val height = maxHeight
+        val widthPx = with(LocalDensity.current) { width.toPx() }
+        val heightPx = with(LocalDensity.current) { height.toPx() }
+
+        val latestLayout by rememberUpdatedState(layout)
+        val latestSelect by rememberUpdatedState(onSelectionChange)
+        val latestChange by rememberUpdatedState(onLayoutChange)
+
+        keys.forEachIndexed { index, key ->
+            val keySize = width * key.scale
+            val selected = selection is Selection.Sub && selection.kind == kind && selection.index == index
+
+            Box(
+                Modifier
+                    .offset(x = width * (0.5f + key.dx) - keySize / 2, y = height * (0.5f + key.dy) - keySize / 2)
+                    .size(keySize)
+                    .then(if (selected) Modifier.selectionPaint() else Modifier)
+                    .pointerInput(kind, index) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown()
+                            var moved = Offset.Zero
+                            latestSelect(Selection.Sub(kind, index))
+                            down.consume()
+
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) break
+
+                                val delta = change.positionChange()
+                                moved += delta
+                                if (moved.getDistance() > DRAG_SLOP_PX) {
+                                    latestChange(
+                                        latestLayout.updateSubKey(kind, index) {
+                                            it.copy(dx = it.dx + delta.x / widthPx, dy = it.dy + delta.y / heightPx)
+                                        }
+                                    )
+                                }
+                                change.consume()
+                            }
+
+                            if (moved.getDistance() <= DRAG_SLOP_PX) latestSelect(Selection.Sub(kind, index))
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                SubKeyOutline(key, selected)
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ 正常模式的渲染
+
+private fun Modifier.selectionPaint(): Modifier = drawBehind {
+    val corner = CornerRadius(14f, 14f)
+    drawRoundRect(color = SelectedFill, cornerRadius = corner)
+    drawRoundRect(color = SelectedBorder, cornerRadius = corner, style = Stroke(width = 6f))
 }
 
 /** 每个控件的宽高比（高 / 宽）。正方形是 1。 */
@@ -134,14 +263,14 @@ private fun ElementContent(element: PadElement, layout: PadLayout, controller: P
                 controller.push()
             }
 
-            DPadStyle.TRIANGLE -> DPadTriangle(Modifier.fillMaxSize()) { direction ->
+            DPadStyle.TRIANGLE -> TriangleDpad(layout.subKeys[PadElementKind.DPAD].orEmpty()) { direction ->
                 input.dpad = direction
                 controller.push()
             }
         }
 
-        PadElementKind.ABXY_GROUP -> AbxyCluster { bit, pressed ->
-            controller.setButton(bit, pressed)
+        PadElementKind.ABXY_GROUP -> AbxyCluster(layout.subKeys[PadElementKind.ABXY_GROUP].orEmpty()) { bit, down ->
+            controller.setButton(bit, down)
         }
 
         PadElementKind.TRIGGER_LEFT -> TriggerOrButton(layout, "LT", Modifier.fillMaxSize()) { value ->
@@ -184,47 +313,218 @@ private fun ElementContent(element: PadElement, layout: PadLayout, controller: P
     }
 }
 
-/** 扳机按布局里选的样式渲染。 */
+private val AbxyBits = mapOf(
+    "A" to GamepadButtons.A,
+    "B" to GamepadButtons.B,
+    "X" to GamepadButtons.X,
+    "Y" to GamepadButtons.Y,
+)
+
+/** ABXY：位置和大小全部来自布局里的子键，所以每个键都能单独挪。 */
 @Composable
-private fun TriggerOrButton(
-    layout: PadLayout,
-    label: String,
+private fun AbxyCluster(keys: List<SubKey>, onButton: (Int, Boolean) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val width = maxWidth
+        val height = maxHeight
+
+        keys.forEach { key ->
+            val bit = AbxyBits[key.label] ?: return@forEach
+            if (!key.enabled) return@forEach
+            val keySize = width * key.scale
+
+            Box(
+                Modifier
+                    .offset(x = width * (0.5f + key.dx) - keySize / 2, y = height * (0.5f + key.dy) - keySize / 2)
+                    .size(keySize),
+            ) {
+                PadButton(key.label, Modifier.fillMaxSize()) { down -> onButton(bit, down) }
+            }
+        }
+    }
+}
+
+private val TriangleDirections = mapOf(
+    "N" to DPad.NORTH,
+    "S" to DPad.SOUTH,
+    "W" to DPad.WEST,
+    "E" to DPad.EAST,
+)
+
+/** 三角分键：同按两个能拼出斜向，所以不比 8 方向那套差。 */
+@Composable
+private fun TriangleDpad(keys: List<SubKey>, onDirection: (DPad) -> Unit) {
+    val pressed = remember { mutableStateListOf<DPad>() }
+
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val width = maxWidth
+        val height = maxHeight
+
+        keys.forEach { key ->
+            val direction = TriangleDirections[key.label] ?: return@forEach
+            if (!key.enabled) return@forEach
+            val keySize = width * key.scale
+
+            Box(
+                Modifier
+                    .offset(x = width * (0.5f + key.dx) - keySize / 2, y = height * (0.5f + key.dy) - keySize / 2)
+                    .size(keySize),
+            ) {
+                TriangleKey(direction, Modifier.fillMaxSize()) { down ->
+                    if (down) pressed.add(direction) else pressed.remove(direction)
+                    onDirection(combine(pressed))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TriangleKey(
+    direction: DPad,
     modifier: Modifier,
-    onChange: (Float) -> Unit,
+    onPressChange: (Boolean) -> Unit,
 ) {
-    when (layout.triggerStyle) {
-        TriggerStyle.SLIDE -> TriggerSlider(modifier, label, onChange)
-        TriggerStyle.BUTTON -> PadRectButton(label, modifier) { down -> onChange(if (down) 1f else 0f) }
+    var down by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = modifier
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val first = awaitFirstDown()
+                    down = true
+                    onPressChange(true)
+                    first.consume()
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == first.id } ?: break
+                        if (!change.pressed) break
+                        change.consume()
+                    }
+
+                    down = false
+                    onPressChange(false)
+                }
+            }
+            .drawBehind {
+                val radius = size.minDimension / 2f
+                val center = Offset(size.width / 2f, size.height / 2f)
+
+                drawCircle(color = if (down) PadColors.ButtonPressed else PadColors.Button, radius = radius, center = center)
+                drawTriangle(
+                    direction = direction,
+                    color = if (down) PadColors.ButtonLabelPressed else PadColors.ButtonLabel,
+                    center = center,
+                    radius = radius * 0.46f,
+                )
+            },
+    )
+}
+
+/** 四个方向 → 8 方向枚举。 */
+internal fun combine(pressed: List<DPad>): DPad {
+    val north = DPad.NORTH in pressed
+    val south = DPad.SOUTH in pressed
+    val west = DPad.WEST in pressed
+    val east = DPad.EAST in pressed
+
+    return when {
+        north && east -> DPad.NORTH_EAST
+        north && west -> DPad.NORTH_WEST
+        south && east -> DPad.SOUTH_EAST
+        south && west -> DPad.SOUTH_WEST
+        north -> DPad.NORTH
+        south -> DPad.SOUTH
+        west -> DPad.WEST
+        east -> DPad.EAST
+        else -> DPad.NEUTRAL
     }
 }
 
-/** ABXY 菱形排布。位置固定，标签按 Xbox 叫法——换 DS4 只改标签，协议不动。 */
-@Composable
-private fun AbxyCluster(onButton: (Int, Boolean) -> Unit) {
-    Box(Modifier.fillMaxSize()) {
-        PadButton("Y", Modifier.align(Alignment.TopCenter).fillMaxSize(0.46f)) { onButton(GamepadButtons.Y, it) }
-        PadButton("X", Modifier.align(Alignment.CenterStart).fillMaxSize(0.46f)) { onButton(GamepadButtons.X, it) }
-        PadButton("B", Modifier.align(Alignment.CenterEnd).fillMaxSize(0.46f)) { onButton(GamepadButtons.B, it) }
-        PadButton("A", Modifier.align(Alignment.BottomCenter).fillMaxSize(0.46f)) { onButton(GamepadButtons.A, it) }
+private fun DrawScope.drawTriangle(direction: DPad, color: Color, center: Offset, radius: Float) {
+    val path = Path()
+    val half = radius * 0.9f
+
+    when (direction) {
+        DPad.NORTH -> {
+            path.moveTo(center.x, center.y - radius)
+            path.lineTo(center.x - half, center.y + radius * 0.7f)
+            path.lineTo(center.x + half, center.y + radius * 0.7f)
+        }
+
+        DPad.SOUTH -> {
+            path.moveTo(center.x, center.y + radius)
+            path.lineTo(center.x - half, center.y - radius * 0.7f)
+            path.lineTo(center.x + half, center.y - radius * 0.7f)
+        }
+
+        DPad.WEST -> {
+            path.moveTo(center.x - radius, center.y)
+            path.lineTo(center.x + radius * 0.7f, center.y - half)
+            path.lineTo(center.x + radius * 0.7f, center.y + half)
+        }
+
+        else -> {
+            path.moveTo(center.x + radius, center.y)
+            path.lineTo(center.x - radius * 0.7f, center.y - half)
+            path.lineTo(center.x - radius * 0.7f, center.y + half)
+        }
     }
+
+    path.close()
+    drawPath(path, color)
 }
 
+// ------------------------------------------------------------------ 编辑模式的轮廓
+
 @Composable
-private fun ElementOutline(element: PadElement) {
-    val shape = RoundedCornerShape(8.dp)
+private fun ElementOutline(element: PadElement, selected: Boolean) {
+    val shape = RoundedCornerShape(10.dp)
+    val accent = if (element.enabled) Color(0x993D7BFF) else DisabledBorder
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0x223D7BFF), shape)
-            .border(1.dp, Color(0x993D7BFF), shape),
+            .background(if (element.enabled) Color(0x223D7BFF) else Color(0x22787878), shape)
+            .border(if (selected) 2.dp else 1.dp, accent, shape),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = element.kind.label,
-            color = Color(0xFFB8D4FF),
+            color = if (element.enabled) Color(0xFFB8D4FF) else Color(0xFFAAAAAA),
             fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
             maxLines = 1,
         )
+    }
+}
+
+@Composable
+private fun SubKeyOutline(key: SubKey, selected: Boolean) {
+    val shape = RoundedCornerShape(8.dp)
+    val accent = if (key.enabled) Color(0xCC3D7BFF) else DisabledBorder
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(if (key.enabled) Color(0x333D7BFF) else Color(0x33787878), shape)
+            .border(if (selected) 2.dp else 1.dp, accent, shape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = key.label,
+            color = if (key.enabled) Color(0xFFE0E8FF) else Color(0xFFAAAAAA),
+            fontSize = 11.sp,
+            maxLines = 1,
+        )
+    }
+}
+
+/** 扳机按布局里选的样式渲染。 */
+@Composable
+private fun TriggerOrButton(layout: PadLayout, label: String, modifier: Modifier, onChange: (Float) -> Unit) {
+    when (layout.triggerStyle) {
+        TriggerStyle.SLIDE -> TriggerSlider(modifier, label, onChange)
+        TriggerStyle.BUTTON -> PadRectButton(label, modifier) { down -> onChange(if (down) 1f else 0f) }
     }
 }
