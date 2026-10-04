@@ -6,7 +6,7 @@
 - **移动端**：Kotlin + Android Studio，Material 3（手柄本体自绘 Canvas）
 - **虚拟手柄后端**：ViGEmBus 起步，`IVirtualControllerBackend` 抽象预留 VIIPER
 - **传输**：WiFi (UDP) / ADB (TCP + `adb reverse`)
-- **状态**：P0「定契约」完成；`adb reverse` 通道已实测可用；下一步 P2（**ADB 优先于 WiFi**）
+- **状态**：**ADB 模式端到端跑通（真机验收）**；WiFi 模式已实现待真机验收
 
 ## 目录
 
@@ -25,7 +25,7 @@ src/pc/                    C# / .NET 10 解决方案
   PadLink.Core.Tests/        41 个测试，含协议向量一致性
 src/android/               Kotlin / Gradle 工程
   core/                      纯 JVM 模块：协议实现 + 11 个向量测试
-  app/                       Android 应用（Compose，当前是自绘摇杆骨架）
+  app/                       Android 应用（Compose 手柄界面 + TCP/UDP 传输）
 docs/                      企划审查 / 技术路线 / 路线图
 research/                  参考项目源码（已被 .gitignore 忽略）
 ```

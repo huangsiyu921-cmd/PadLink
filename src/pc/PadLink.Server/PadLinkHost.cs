@@ -22,6 +22,7 @@ public sealed class PadLinkHost : IDisposable
 
     private CancellationTokenSource? _cts;
     private readonly List<Task> _loops = [];
+    private string? _adbPath;               // 我们自己建的隧道，退出时要拆掉
     private bool _disposed;
 
     /// <param name="tcpPort">ADB 模式用的 TCP 端口；传 null 就只用 UDP。</param>
@@ -125,6 +126,7 @@ public sealed class PadLinkHost : IDisposable
         if (devices.Count == 0) return (false, "没有已连接并授权的设备");
 
         var (ok, message) = AdbTunnel.EstablishReverse(adb, TcpPort);
+        if (ok) _adbPath = adb;                 // 记住是谁建的，退出时要拆
         return (ok, ok ? $"隧道已建立（{devices[0]} → localhost:{TcpPort}）" : message);
     }
 
@@ -152,6 +154,15 @@ public sealed class PadLinkHost : IDisposable
         _registry.Dispose();        // 销毁所有虚拟手柄
         _udpServer.Dispose();
         _tcpServer?.Dispose();
+
+        // 拆掉我们自己建的隧道——别在用户机器上留一条 adb 端口转发。
+        if (_adbPath is not null)
+        {
+            var (ok, message) = AdbTunnel.RemoveReverse(_adbPath, TcpPort);
+            Console.WriteLine(ok ? "ADB 隧道已拆除" : $"ADB 隧道拆除失败：{message}");
+            _adbPath = null;
+        }
+
         _backend.Dispose();
     }
 }

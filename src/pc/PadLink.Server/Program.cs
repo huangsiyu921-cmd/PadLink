@@ -79,6 +79,13 @@ using (host)
         cts.Cancel();
     };
 
+    // --exit-after：N 秒后正常退出。给自动化测试用，顺便能验证退出时的清理路径（拆隧道、毁手柄）。
+    if (int.TryParse(OptionValue(args, "--exit-after"), out var exitAfterSeconds) && exitAfterSeconds > 0)
+    {
+        Console.WriteLine($"将在 {exitAfterSeconds} 秒后正常退出。");
+        cts.CancelAfter(TimeSpan.FromSeconds(exitAfterSeconds));
+    }
+
     try
     {
         await Task.Delay(Timeout.Infinite, cts.Token);
