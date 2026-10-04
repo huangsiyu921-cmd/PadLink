@@ -3,7 +3,6 @@ package com.padlink.app.ui
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -13,7 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -21,34 +20,21 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 
-/** 手柄控件的统一配色。集中放一处，改风格不用满项目找颜色。 */
-object PadColors {
-    val Button = Color(0xFF4A4A4A)
-    val ButtonPressed = Color(0xFF4C8DFF)
-    val ButtonLabel = Color(0xFFEDEDED)
-    val ButtonLabelPressed = Color(0xFF10192B)
-    val Hairline = Color(0x1AFFFFFF)
-    val StickBase = Color(0xFF3A3A3A)
-    val StickWell = Color(0xFF2A2A2A)
-    val StickKnob = Color(0xFFC8C8C8)
-}
-
 /**
- * 圆形按键。按住期间保持按下，即使手指滑出按钮范围——跟真实手柄手感一致。
+ * 圆角矩形按钮。肩键（LB/RB）和按钮式扳机（LT/RT）都用它——
+ * 它们本来就是同一种东西，区别只在语义。
  */
 @Composable
-fun PadButton(
+fun PadRectButton(
     label: String,
     modifier: Modifier = Modifier,
-    tint: Color = PadColors.Button,
-    labelSize: TextUnit = 16.sp,
+    labelSize: TextUnit = 15.sp,
     onPressChange: (Boolean) -> Unit = {},
 ) {
     var pressed by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier
-            .aspectRatio(1f)
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val first = awaitFirstDown()
@@ -68,9 +54,16 @@ fun PadButton(
                 }
             }
             .drawBehind {
-                val radius = size.minDimension / 2f
-                drawCircle(color = if (pressed) PadColors.ButtonPressed else tint, radius = radius)
-                drawCircle(color = PadColors.Hairline, radius = radius, style = Stroke(radius * 0.06f))
+                val corner = CornerRadius(size.height * 0.26f)
+                drawRoundRect(
+                    color = if (pressed) PadColors.ButtonPressed else PadColors.Button,
+                    cornerRadius = corner,
+                )
+                drawRoundRect(
+                    color = PadColors.Hairline,
+                    cornerRadius = corner,
+                    style = Stroke(width = size.height * 0.05f),
+                )
             },
         contentAlignment = Alignment.Center,
     ) {

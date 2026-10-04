@@ -6,6 +6,7 @@
 - **移动端**：Kotlin + Android Studio，Material 3（手柄本体自绘 Canvas）
 - **虚拟手柄后端**：ViGEmBus 起步，`IVirtualControllerBackend` 抽象预留 VIIPER
 - **传输**：WiFi (UDP) / ADB (TCP + `adb reverse`)
+- **布局**：控件位置/大小可拖动 + 双指缩放，改动存本地；扳机（滑动条 / 按钮）与十字键（8 方向 / 三角分键）各有两种样式
 - **状态**：**ADB 模式端到端跑通（真机验收）**；WiFi 模式已实现待真机验收
 
 ## 目录
