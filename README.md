@@ -40,6 +40,7 @@ dotnet test                                                  # 41 个协议测�
 dotnet run --project PadLink.Gui                             # 图形界面（推荐：启动/停止 + 连接情况 + 日志）
 dotnet run --project PadLink.Server                          # 命令行起服务（默认 vigem 后端，会创建真手柄）
 dotnet run --project PadLink.Server -- --backend console     # 只在控制台打印，不碰驱动
+dotnet run --project PadLink.Server -- --adb                 # 起服务并自动建 adb reverse 隧道（ADB 模式）
 dotnet run --project PadLink.Server -- --verify              # 自检：建手柄 → XInput 回读比对（12 项）
 dotnet run --project PadLink.Server -- --probe               # 只读 XInput，看系统里有没有输入
 ```
@@ -47,7 +48,8 @@ dotnet run --project PadLink.Server -- --probe               # 只读 XInput，�
 另开一个终端：
 
 ```powershell
-python tools/fake_pad.py                 # 跑 5 秒演示序列
+python tools/fake_pad.py                 # 跑 5 秒演示序列（UDP / WiFi 模式）
+python tools/fake_pad.py --transport tcp # 走 TCP（ADB 模式，会先握手再发帧）
 python tools/fake_pad.py --mode discover # 广播探测 PC
 python tools/fake_pad.py --mode hold     # 持续按住 A（Ctrl+C 退出，可观察 fail-safe）
 ```

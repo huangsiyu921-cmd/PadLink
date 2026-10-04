@@ -47,7 +47,7 @@ catch (Exception ex)
 PadLinkHost host;
 try
 {
-    host = new PadLinkHost(backend, udpPort, idleTimeout);
+    host = new PadLinkHost(backend, udpPort, idleTimeout, ProtocolConstants.ControlPort);
 }
 catch (SocketException ex)
 {
@@ -60,6 +60,13 @@ catch (SocketException ex)
 using (host)
 {
     host.Start();
+
+    // --adb：启动后顺手把隧道建起来，手机插着线就能直接连。
+    if (args.Contains("--adb"))
+    {
+        var (ok, message) = host.TryEstablishAdbTunnel();
+        Console.WriteLine(ok ? $"  ADB 隧道：{message}" : $"  ADB 隧道失败：{message}");
+    }
 
     foreach (var address in LocalAddresses())
         Console.WriteLine($"  本机地址 {address}:{udpPort}");
