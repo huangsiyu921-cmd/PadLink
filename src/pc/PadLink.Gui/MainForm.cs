@@ -41,6 +41,7 @@ public sealed class MainForm : Form
         Font = PadTheme.Body;
         BackColor = PadTheme.Background;
         ForeColor = PadTheme.Text;
+        Icon = LoadAppIcon();
 
         BuildLayout();
 
@@ -198,7 +199,7 @@ public sealed class MainForm : Form
 
     private void SetupTrayIcon()
     {
-        _trayIcon.Icon = SystemIcons.Application;
+        _trayIcon.Icon = Icon;
         _trayIcon.Text = "PadLink";
         _trayIcon.Visible = false;
         _trayIcon.DoubleClick += (_, _) => RestoreFromTray();
@@ -411,6 +412,16 @@ public sealed class MainForm : Form
         _statusLabel.ForeColor = sessions.Count == 0 ? PadTheme.TextMuted : PadTheme.Ok;
 
         UpdateTrayText();
+    }
+
+    /// <summary>
+    /// 应用图标：跟 Android 端同一套图形（深底 + 蓝胶囊 + 双色圆点）。
+    /// 从嵌入资源读，exe 换个位置也不会丢图标。
+    /// </summary>
+    private static Icon LoadAppIcon()
+    {
+        using var stream = typeof(MainForm).Assembly.GetManifestResourceStream("PadLink.Gui.padlink.ico");
+        return stream is null ? SystemIcons.Application : new Icon(stream);
     }
 
     private static TextWriter OpenLogFile()

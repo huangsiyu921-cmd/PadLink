@@ -1,0 +1,8 @@
+# 换行符别被 git 随手改掉：
+#  - .bat 必须是 CRLF，LF 会让 goto/label 和 ^ 续行出问题
+#  - .ps1 用 CRLF（配合 UTF-8 BOM，PowerShell 5.1 才读得对）
+* text=auto
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.sh  text eol=lf
+*.kt  text eol=lf

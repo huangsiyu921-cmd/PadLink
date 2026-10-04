@@ -28,6 +28,12 @@ dotnet publish $project -c Release -o $appDir --nologo
 
 if ($LASTEXITCODE -ne 0) { throw "发布失败（退出码 $LASTEXITCODE）" }
 
+# 卸载脚本也放一份进 app，用户拿到这个目录就能卸干净。
+$uninstall = Join-Path $workingTree 'tools\uninstall.bat'
+if (Test-Path $uninstall) {
+    Copy-Item $uninstall (Join-Path $appDir 'uninstall.bat') -Force
+}
+
 $exe = Join-Path $appDir 'PadLink.Gui.exe'
 Write-Host ""
 Write-Host "完成：$exe"

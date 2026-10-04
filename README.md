@@ -12,10 +12,10 @@
 ## 目录
 
 ```
-D:\PadLink\
+<项目根>\
   working tree\          ← 源码，本 git 仓库
     protocol\              两端唯一契约 + 测试向量
-    tools\                 向量生成器 / 假手机 / adb 隧道探针
+    tools\                 向量生成器 / 假手机 / adb 隧道探针 / 卸载脚本 / 图标生成
     src\pc\                C# / .NET 10 解决方案
     src\android\           Kotlin / Gradle 工程
     docs\                  企划审查 / 技术路线 / 路线图
@@ -24,6 +24,7 @@ D:\PadLink\
 
   app\                   ← PC 端编译产物，不在 git 里
     PadLink.Gui.exe        双击就用
+    uninstall.bat          卸载：清进程 / adb 隧道 / 日志 / 程序目录
 ```
 
 `src\pc` 里各项目：
@@ -42,17 +43,20 @@ D:\PadLink\
 
 双击 `app\PadLink.Gui.exe`。界面里点「设置」能启动/停止服务、建 ADB 隧道、切换手柄类型。
 
+卸载：跑 `app\uninstall.bat`（或 `working tree\tools\uninstall.bat`）——
+清掉进程、adb 隧道、日志和程序目录。**ViGEmBus 驱动故意不动**（DS4Windows 等软件也在用它）。
+
 ### 改完代码重新发布
 
 ```powershell
-cd "D:\PadLink\working tree"
+cd working tree
 .\build.ps1
 ```
 
 ### 开发调试
 
 ```powershell
-cd "D:\PadLink\working tree\src\pc"
+cd working tree\src\pc
 dotnet test                                                  # 41 个协议测试
 dotnet run --project PadLink.Server                          # 命令行起服务
 dotnet run --project PadLink.Server -- --controller ds4       # 以 PS4 身份出现（Steam 认得出）
@@ -64,7 +68,7 @@ dotnet run --project PadLink.Server -- --probe                # 只读 XInput，
 另开一个终端：
 
 ```powershell
-cd "D:\PadLink\working tree"
+cd working tree
 python tools/fake_pad.py                  # 5 秒演示序列（UDP / WiFi 模式）
 python tools/fake_pad.py --transport tcp  # 走 TCP（ADB 模式，会先握手再发帧）
 python tools/fake_pad.py --mode discover  # 广播探测 PC

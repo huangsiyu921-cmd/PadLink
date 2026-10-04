@@ -10,7 +10,13 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationVisualStyles>true</ApplicationVisualStyles>
     <ApplicationUseCompatibleTextRendering>false</ApplicationUseCompatibleTextRendering>
+    <ApplicationIcon>padlink.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 窗体和托盘从嵌入资源读图标，不怕文件被挪走或删掉。 -->
+    <EmbeddedResource Include="padlink.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\PadLink.Core\PadLink.Core.csproj" />
