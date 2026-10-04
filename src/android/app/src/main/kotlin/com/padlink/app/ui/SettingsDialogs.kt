@@ -3,9 +3,14 @@ package com.padlink.app.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -23,8 +28,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.padlink.app.PadLinkController
@@ -35,6 +42,14 @@ import com.padlink.app.layout.PadLayout
 import com.padlink.app.layout.TriggerStyle
 
 private val HintColor = Color(0xFF9E9E9E)
+
+/**
+ * 弹窗里滚动区的最大高度。
+ *
+ * 必须给上限：`verticalScroll` 只在内容**溢出**时才滚得动，
+ * 而弹窗的 text 槽高度是自适应的——不给上限，内容超出只会被裁掉，手指怎么滑都没反应。
+ */
+private val DialogScrollMax = 250.dp
 
 /** 选中控件后的设置弹窗。左下取消、右下应用——改到一半反悔不至于把布局弄乱。 */
 @Composable
@@ -59,7 +74,10 @@ fun ElementSettingsDialog(
         title = { Text(title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold) },
         text = {
             Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = DialogScrollMax)
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 when (selection) {
@@ -129,7 +147,10 @@ fun AppSettingsDialog(
         title = { Text("设置", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) },
         text = {
             Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = DialogScrollMax)
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 SectionTitle("连接模式")
@@ -219,16 +240,21 @@ fun ExportDialog(layout: PadLayout, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text("导出布局", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) },
         text = {
-            Column {
-                Text("复制这段发给我，我把它设成默认布局。", fontSize = 12.sp, color = HintColor)
-                Text(
-                    text = layout.encode(),
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp,
-                    modifier = Modifier
-                        .padding(top = 8.dp)
-                        .verticalScroll(rememberScrollState()),
-                )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = DialogScrollMax)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                Text("长按选中这段，复制发给我。", fontSize = 12.sp, color = HintColor)
+                SelectionContainer {
+                    Text(
+                        text = layout.encode(),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("好") } },
@@ -268,6 +294,7 @@ private fun NumberField(
 
     var text by remember { mutableStateOf(format(value)) }
     var focused by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
 
     LaunchedEffect(value, focused) {
         if (!focused) text = format(value)
@@ -278,13 +305,20 @@ private fun NumberField(
 
         OutlinedTextField(
             value = text,
-            onValueChange = { text = it },
+            onValueChange = { input ->
+                text = input
+                // 边打边生效。之前要等失焦（点别处）才应用，用户敲完发现没反应，很别扭。
+                input.toFloatOrNull()?.let(onValueChange)
+            },
             singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
             modifier = Modifier
-                .width(100.dp)
+                .width(110.dp)
                 .onFocusChanged { state ->
                     val was = focused
                     focused = state.isFocused
+                    // 失焦时也应用一次，兜住"敲了但没打全"这种情况。
                     if (was && !focused) text.toFloatOrNull()?.let(onValueChange)
                 },
         )

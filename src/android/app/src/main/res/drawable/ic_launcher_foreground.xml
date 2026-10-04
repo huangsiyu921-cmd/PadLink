@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PadLink 图标：一只抽象的手柄剖面——蓝色胶囊 + 左边的深色摇杆 + 右边的浅色按钮。
+  蓝白双色，底色压深，走"暗色 + 一点高光"的路子。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 手柄主体：横向胶囊，带一点渐变免得死板 -->
+    <path android:pathData="M40,43 H68 A11,11 0 0 1 68,65 H40 A11,11 0 0 1 40,43 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="30"
+                android:startY="43"
+                android:endX="78"
+                android:endY="65"
+                android:type="linear">
+                <item android:color="#6FB0FF" android:offset="0" />
+                <item android:color="#3D7BFF" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- 左摇杆：挖空成底色，形成一个凹陷的圆 -->
+    <path
+        android:fillColor="#12151C"
+        android:pathData="M35,54 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0 Z" />
+
+    <!-- 右侧按钮：亮白一点，跟左侧形成对比 -->
+    <path
+        android:fillColor="#EAF2FF"
+        android:pathData="M62.5,54 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0 Z" />
+</vector>

@@ -55,8 +55,13 @@ private val SelectedBorder = Color(0xFF3D7BFF)
 private val SelectedFill = Color(0x443D7BFF)
 private val DisabledBorder = Color(0x99787878)
 
-/** 拖动判定阈值：小于这个位移就当是"点了一下"，不是拖。 */
-private const val DRAG_SLOP_PX = 12f
+/**
+ * 拖动判定阈值。
+ *
+ * 取 24dp 是有教训的：之前写 12px，在 524dpi 的屏幕上只有 ~2dp，
+ * 手指按下去想"选中"控件，稍微抖一下就被当成拖动，**布局会被误拖乱**。
+ */
+private val DRAG_SLOP = 24.dp
 
 /**
  * 按 [PadLayout] 摆放所有控件。
@@ -79,6 +84,7 @@ fun GamepadCanvas(
         val screenHeight = maxHeight
         val screenWidthPx = with(LocalDensity.current) { screenWidth.toPx() }
         val screenHeightPx = with(LocalDensity.current) { screenHeight.toPx() }
+        val dragSlopPx = with(LocalDensity.current) { DRAG_SLOP.toPx() }
 
         val latestLayout by rememberUpdatedState(layout)
         val latestSelect by rememberUpdatedState(onSelectionChange)
@@ -88,7 +94,7 @@ fun GamepadCanvas(
             // key 保证每个控件的组合位置固定：布局一变不至于把状态串到别的控件上。
             key(element.kind) {
                 val elementWidth = screenWidth * element.size
-                val elementHeight = elementWidth * aspectOf(element.kind, layout)
+                val elementHeight = elementWidth * layout.aspectOf(element.kind)
                 val isSelected = selection is Selection.Element && selection.kind == element.kind
 
                 Box(
@@ -117,7 +123,7 @@ fun GamepadCanvas(
 
                                             val delta = change.positionChange()
                                             moved += delta
-                                            if (moved.getDistance() > DRAG_SLOP_PX) {
+                                            if (moved.getDistance() > dragSlopPx) {
                                                 dragged = true
                                                 val base = latestLayout
                                                 val self = base.element(element.kind)
@@ -174,6 +180,7 @@ private fun SubKeyEditor(
         val height = maxHeight
         val widthPx = with(LocalDensity.current) { width.toPx() }
         val heightPx = with(LocalDensity.current) { height.toPx() }
+        val dragSlopPx = with(LocalDensity.current) { DRAG_SLOP.toPx() }
 
         val latestLayout by rememberUpdatedState(layout)
         val latestSelect by rememberUpdatedState(onSelectionChange)
@@ -202,7 +209,7 @@ private fun SubKeyEditor(
 
                                 val delta = change.positionChange()
                                 moved += delta
-                                if (moved.getDistance() > DRAG_SLOP_PX) {
+                                if (moved.getDistance() > dragSlopPx) {
                                     latestChange(
                                         latestLayout.updateSubKey(kind, index) {
                                             it.copy(dx = it.dx + delta.x / widthPx, dy = it.dy + delta.y / heightPx)
@@ -212,7 +219,7 @@ private fun SubKeyEditor(
                                 change.consume()
                             }
 
-                            if (moved.getDistance() <= DRAG_SLOP_PX) latestSelect(Selection.Sub(kind, index))
+                            if (moved.getDistance() <= dragSlopPx) latestSelect(Selection.Sub(kind, index))
                         }
                     },
                 contentAlignment = Alignment.Center,
@@ -228,18 +235,10 @@ private fun SubKeyEditor(
 private fun Modifier.selectionPaint(): Modifier = drawBehind {
     val corner = CornerRadius(14f, 14f)
     drawRoundRect(color = SelectedFill, cornerRadius = corner)
-    drawRoundRect(color = SelectedBorder, cornerRadius = corner, style = Stroke(width = 6f))
+    drawRoundRect(color = SelectedBorder, cornerRadius = corner, style = Stroke(width = 4f))
 }
 
-/** 每个控件的宽高比（高 / 宽）。正方形是 1。 */
-private fun aspectOf(kind: PadElementKind, layout: PadLayout): Float = when (kind) {
-    PadElementKind.TRIGGER_LEFT, PadElementKind.TRIGGER_RIGHT ->
-        if (layout.triggerStyle == TriggerStyle.SLIDE) 2.4f else 0.64f
-
-    PadElementKind.SHOULDER_LEFT, PadElementKind.SHOULDER_RIGHT -> 0.64f
-    else -> 1f
-}
-
+/** 每个控件的宽高比见 [PadLayout.aspectOf]——放在数据模型上，测试也要用。 */
 @Composable
 private fun ElementContent(element: PadElement, layout: PadLayout, controller: PadLinkController) {
     val input = controller.input
@@ -291,11 +290,11 @@ private fun ElementContent(element: PadElement, layout: PadLayout, controller: P
             controller.setButton(GamepadButtons.RIGHT_SHOULDER, down)
         }
 
-        PadElementKind.BACK -> PadButton("Back", Modifier.fillMaxSize(), labelSize = 14.sp) { down ->
+        PadElementKind.BACK -> PadIconButton(PadIcon.VIEW, Modifier.fillMaxSize()) { down ->
             controller.setButton(GamepadButtons.BACK, down)
         }
 
-        PadElementKind.START -> PadButton("Start", Modifier.fillMaxSize(), labelSize = 14.sp) { down ->
+        PadElementKind.START -> PadIconButton(PadIcon.MENU, Modifier.fillMaxSize()) { down ->
             controller.setButton(GamepadButtons.START, down)
         }
 
@@ -480,13 +479,13 @@ private fun DrawScope.drawTriangle(direction: DPad, color: Color, center: Offset
 @Composable
 private fun ElementOutline(element: PadElement, selected: Boolean) {
     val shape = RoundedCornerShape(10.dp)
-    val accent = if (element.enabled) Color(0x993D7BFF) else DisabledBorder
+    val accent = if (element.enabled) Color(0x663D7BFF) else Color(0x66787878)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (element.enabled) Color(0x223D7BFF) else Color(0x22787878), shape)
-            .border(if (selected) 2.dp else 1.dp, accent, shape),
+            .background(if (element.enabled) Color(0x1A3D7BFF) else Color(0x1A787878), shape)
+            .border(if (selected) 1.5.dp else 1.dp, accent, shape),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -502,13 +501,13 @@ private fun ElementOutline(element: PadElement, selected: Boolean) {
 @Composable
 private fun SubKeyOutline(key: SubKey, selected: Boolean) {
     val shape = RoundedCornerShape(8.dp)
-    val accent = if (key.enabled) Color(0xCC3D7BFF) else DisabledBorder
+    val accent = if (key.enabled) Color(0x663D7BFF) else DisabledBorder
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (key.enabled) Color(0x333D7BFF) else Color(0x33787878), shape)
-            .border(if (selected) 2.dp else 1.dp, accent, shape),
+            .background(if (key.enabled) Color(0x1F3D7BFF) else Color(0x1F787878), shape)
+            .border(if (selected) 1.5.dp else 1.dp, accent, shape),
         contentAlignment = Alignment.Center,
     ) {
         Text(

@@ -50,7 +50,7 @@ enum class DPadStyle { COMBO, TRIANGLE }
 /**
  * 一个控件的位置、大小、旋转。
  *
- * 坐标是**屏幕比例**（0..1，控件中心点），[size] 是相对**屏幕宽度**的比例，[rotation] 是角度。
+ * 坐标是**屏幕比例**（0..1，控件中心点），[size] 是相对**屏幕宽度**的比例。
  * 用比例而不是像素：换台手机不用重排。
  */
 data class PadElement(
@@ -82,6 +82,19 @@ data class PadLayout(
 ) {
     fun element(kind: PadElementKind): PadElement? = elements.firstOrNull { it.kind == kind }
 
+    /**
+     * 控件的宽高比（高 / 宽）。正方形是 1。
+     *
+     * 放在数据模型上而不是渲染层：摆位时要靠它算占屏幕多大，测试也要用它验证有没有重叠。
+     */
+    fun aspectOf(kind: PadElementKind): Float = when (kind) {
+        PadElementKind.TRIGGER_LEFT, PadElementKind.TRIGGER_RIGHT ->
+            if (triggerStyle == TriggerStyle.SLIDE) 2.4f else 0.64f
+
+        PadElementKind.SHOULDER_LEFT, PadElementKind.SHOULDER_RIGHT -> 0.64f
+        else -> 1f
+    }
+
     fun move(kind: PadElementKind, x: Float, y: Float): PadLayout = update(kind) {
         it.copy(x = x.coerceIn(0f, 1f), y = y.coerceIn(0f, 1f))
     }
@@ -106,8 +119,8 @@ data class PadLayout(
     }
 
     /**
-     * 导出为一段可读文本。用户在设置里点「导出」拿到它，直接贴回给我，
-     * 我把它固化成 [Default]——所以格式要稳定、可整块替换。
+     * 导出为一段可读文本。用户在设置里点「导出」拿到它，直接贴回来就能固化成默认布局，
+     * 所以格式要稳定、可整块替换。
      */
     fun encode(): String = buildString {
         appendLine("# PadLink layout")
@@ -133,41 +146,45 @@ data class PadLayout(
         /**
          * 默认布局。刻意写成文本而不是 Kotlin 构造：用户调好导出一段文本发回来，
          * 这里整块替换即可，不用改代码结构。
+         *
+         * **这份是用户亲手调的**（2026-10-04 导出后固化），不是算出来的——
+         * 所以别拿"控件不能重叠""必须对齐"之类的规则去改它。相邻控件留多少、
+         * 哪个键偏一点，都是手感的取舍。
          */
         private const val DEFAULT_TEXT = """
 # PadLink layout
-TRIGGER_LEFT,0.062,0.15,0.105,0.0,true
-SHOULDER_LEFT,0.152,0.18,0.105,0.0,true
-DPAD,0.118,0.43,0.195,0.0,true
-LEFT_STICK,0.165,0.765,0.235,0.0,true
-TRIGGER_RIGHT,0.938,0.15,0.105,0.0,true
-SHOULDER_RIGHT,0.848,0.18,0.105,0.0,true
-ABXY_GROUP,0.882,0.43,0.225,0.0,true
-RIGHT_STICK,0.835,0.765,0.235,0.0,true
-GUIDE,0.5,0.135,0.1,0.0,true
-BACK,0.43,0.56,0.09,0.0,true
-START,0.57,0.56,0.09,0.0,true
-STICK_LEFT_BUTTON,0.048,0.915,0.08,0.0,true
-STICK_RIGHT_BUTTON,0.952,0.915,0.08,0.0,true
+TRIGGER_LEFT,0.18122892,0.050427023,0.06,10.0,true
+SHOULDER_LEFT,0.33180705,4.39803E-5,0.095,0.0,true
+DPAD,0.23675257,0.42976856,0.155,0.0,true
+LEFT_STICK,0.2,0.82,0.15,0.0,true
+TRIGGER_RIGHT,0.76028067,0.059223965,0.07,-15.0,true
+SHOULDER_RIGHT,0.6323053,0.09673674,0.095,0.0,true
+ABXY_GROUP,0.8770372,0.379462,0.16,0.0,true
+RIGHT_STICK,0.8,0.82,0.15,0.0,true
+GUIDE,0.5,0.19,0.085,0.0,true
+BACK,0.43,0.56,0.08,0.0,true
+START,0.57,0.56,0.08,0.0,true
+STICK_LEFT_BUTTON,0.048,0.92,0.07,0.0,true
+STICK_RIGHT_BUTTON,0.952,0.92,0.07,0.0,true
 trigger=SLIDE
 dpad=COMBO
-sub,ABXY_GROUP,Y,0.0,-0.27,0.46,true
-sub,ABXY_GROUP,A,0.0,0.27,0.46,true
-sub,ABXY_GROUP,X,-0.27,0.0,0.46,true
-sub,ABXY_GROUP,B,0.27,0.0,0.46,true
-sub,DPAD,N,0.0,-0.33,0.34,true
-sub,DPAD,S,0.0,0.33,0.34,true
-sub,DPAD,W,-0.33,0.0,0.34,true
-sub,DPAD,E,0.33,0.0,0.34,true
+sub,ABXY_GROUP,Y,-0.10017011,-0.21076281,0.5,true
+sub,ABXY_GROUP,A,0.22078502,-0.9530263,0.665,true
+sub,ABXY_GROUP,X,-0.79511386,0.19147165,0.45499995,true
+sub,ABXY_GROUP,B,0.4397971,0.094813,0.44999996,true
+sub,DPAD,N,0.0,-0.33,0.33,true
+sub,DPAD,S,0.0,0.33,0.33,true
+sub,DPAD,W,-0.33,0.0,0.33,true
+sub,DPAD,E,0.33,0.0,0.33,true
 """
 
-        val Default: PadLayout = decode(DEFAULT_TEXT)
-
         /**
-         * 解析 [encode] 的输出。旧版本存档少字段也能读（缺的补默认），
-         * 单行读不懂就跳过该行，不至于整个布局报废。
+         * 纯解析：只认文本里的东西，**不做任何"补默认"**。
+         *
+         * 拆成独立函数是必须的——[Default] 就是靠它算出来的。如果解析过程里再去读 [Default]，
+         * 就会撞上"类还在初始化、字段还是 null"，直接 NullPointerException（踩过：App 一启动就崩）。
          */
-        fun decode(text: String): PadLayout {
+        private fun parse(text: String): PadLayout {
             val elements = mutableListOf<PadElement>()
             val subKeys = mutableMapOf<PadElementKind, MutableList<SubKey>>()
             var trigger = TriggerStyle.SLIDE
@@ -208,13 +225,24 @@ sub,DPAD,E,0.33,0.0,0.34,true
                 }
             }
 
-            // 缺控件就补默认位置，免得升级后旧存档少几个键。
-            val missing = Default.elements.filter { def -> elements.none { it.kind == def.kind } }
-            val mergedSubKeys = Default.subKeys.mapValues { (kind, defaults) ->
-                subKeys[kind] ?: defaults
-            } + subKeys.filterKeys { it !in Default.subKeys }
+            return PadLayout(elements, subKeys, trigger, dpad)
+        }
 
-            return PadLayout(elements + missing, mergedSubKeys, trigger, dpad)
+        val Default: PadLayout = parse(DEFAULT_TEXT)
+
+        /**
+         * 解析 [encode] 的输出，供读存档用。
+         * 单行读不懂就跳过；缺的控件用 [Default] 里同名的位置补上——以后加新键时旧存档不至于少几个键。
+         */
+        fun decode(text: String): PadLayout {
+            val parsed = parse(text)
+
+            val missing = Default.elements.filter { def -> parsed.elements.none { it.kind == def.kind } }
+            val mergedSubKeys = Default.subKeys.mapValues { (kind, defaults) ->
+                parsed.subKeys[kind] ?: defaults
+            } + parsed.subKeys.filterKeys { it !in Default.subKeys }
+
+            return parsed.copy(elements = parsed.elements + missing, subKeys = mergedSubKeys)
         }
     }
 }
