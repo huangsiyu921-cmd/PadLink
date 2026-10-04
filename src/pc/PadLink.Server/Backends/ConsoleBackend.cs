@@ -27,6 +27,9 @@ public sealed class ConsoleBackend : IVirtualControllerBackend
 
         public ControllerType Type => type;
 
+        /// <summary>调试后端没有真实槽位，直接用自己的编号占位。</summary>
+        public int Slot => player;
+
         // 调试后端不产生震动回传；真实后端（ViGEm/VIIPER）会触发它。
 #pragma warning disable CS0067
         public event EventHandler<RumbleEventArgs>? Rumble;

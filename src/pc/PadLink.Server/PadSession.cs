@@ -19,6 +19,12 @@ public sealed class PadSession(IPEndPoint remote, IVirtualController controller)
 
     public InputTimeoutGuard Guard { get; } = new(ProtocolConstants.FailSafeTimeout);
 
+    /// <summary>最近一次收到数据帧的时间戳（<see cref="TimeProvider.GetTimestamp"/>）。</summary>
+    public long LastFrameTimestamp { get; private set; } = TimeProvider.System.GetTimestamp();
+
+    /// <summary>空闲时长，供会话回收判断。</summary>
+    public TimeSpan IdleFor => TimeProvider.System.GetElapsedTime(LastFrameTimestamp);
+
     public uint LastSequence { get; private set; }
 
     public long FramesReceived { get; private set; }
@@ -38,6 +44,7 @@ public sealed class PadSession(IPEndPoint remote, IVirtualController controller)
 
         _hasSequence = true;
         LastSequence = frame.Sequence;
+        LastFrameTimestamp = TimeProvider.System.GetTimestamp();
         FramesReceived++;
 
         if (Guard.IsStale)

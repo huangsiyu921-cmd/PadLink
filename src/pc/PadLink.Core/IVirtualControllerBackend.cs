@@ -27,6 +27,9 @@ public interface IVirtualController : IDisposable
 
     ControllerType Type { get; }
 
+    /// <summary>系统分配的设备槽位。XInput 后端是 0..3，调试后端返回 <see cref="Player"/>。</summary>
+    int Slot { get; }
+
     /// <summary>提交一次<b>全量</b>状态。调用频率应等于协商好的发送节拍。</summary>
     void Submit(in GamepadState state);
 

@@ -30,12 +30,15 @@ research/                  参考项目源码（已被 .gitignore 忽略）
 
 ## 怎么跑
 
-### PC 端：不接驱动就能验证链路
+### PC 端
 
 ```powershell
 cd src\pc
-dotnet test                              # 41 个协议测试
-dotnet run --project PadLink.Server      # 起 UDP 服务
+dotnet test                                                  # 41 个协议测试
+dotnet run --project PadLink.Server                          # 起服务（默认 vigem 后端，会创建真手柄）
+dotnet run --project PadLink.Server -- --backend console     # 只在控制台打印，不碰驱动
+dotnet run --project PadLink.Server -- --verify              # 自检：建手柄 → XInput 回读比对（12 项）
+dotnet run --project PadLink.Server -- --probe               # 只读 XInput，看系统里有没有输入
 ```
 
 另开一个终端：

@@ -35,6 +35,13 @@ public static class ProtocolConstants
     /// <summary>PC 端 fail-safe：超过此时长未收到合规输入帧即归零输入。</summary>
     public static readonly TimeSpan FailSafeTimeout = TimeSpan.FromMilliseconds(300);
 
+    /// <summary>
+    /// 会话空闲多久后彻底回收（销毁虚拟手柄）。
+    /// 必须远大于 <see cref="FailSafeTimeout"/>：短超时只归零、<b>不销毁设备</b>，
+    /// 因为销毁会让游戏重排 XInput 槽位；只有确认对端很久没动静了才真回收。
+    /// </summary>
+    public static readonly TimeSpan IdleSessionTimeout = TimeSpan.FromMinutes(5);
+
     /// <summary>XInput 槽位数上限。</summary>
     public const int MaxPlayers = 4;
 }

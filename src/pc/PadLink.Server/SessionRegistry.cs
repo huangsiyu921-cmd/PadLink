@@ -33,12 +33,33 @@ public sealed class SessionRegistry(IVirtualControllerBackend backend) : IDispos
         foreach (var session in _sessions.Values) session.PollFailSafe();
     }
 
-    /// <summary>移除长时间无数据的会话。手柄销毁会让游戏重排槽位，所以阈值远大于 fail-safe。</summary>
-    public void ReapIdleSessions(TimeSpan idle)
+    /// <summary>
+    /// 回收长时间没数据的会话，销毁其虚拟手柄。
+    /// <para>
+    /// 为什么不能靠 <see cref="PollFailSafe"/> 顺手做：fail-safe 的 300ms 太短，那时候只能归零输入，
+    /// 一旦销毁设备游戏就会重排槽位。所以回收用的是几分钟量级的独立阈值。
+    /// </para>
+    /// </summary>
+    /// <returns>回收掉的会话数。</returns>
+    public int ReapIdleSessions(TimeSpan idle)
     {
-        _ = idle;
-        _ = _sessions;
-        // TODO(P4)：需要 LastSeen 时间戳；当前只在进程退出时统一销毁。
+        var victims = _sessions
+            .Where(pair => pair.Value.IdleFor > idle)
+            .Select(pair => pair.Key)
+            .ToList();
+
+        foreach (var key in victims)
+        {
+            var session = _sessions[key];
+            _sessions.Remove(key);
+
+            var idleSeconds = session.IdleFor.TotalSeconds;
+            Console.WriteLine(
+                $"  回收空闲会话 {key}（{idleSeconds:F0}s 无数据），销毁虚拟手柄 P{session.Controller.Player}");
+            session.Dispose();
+        }
+
+        return victims.Count;
     }
 
     public void Dispose()
