@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 手柄本体全屏自绘，不需要 ActionBar；用框架内置主题避免引入 appcompat。 -->
+    <style name="Theme.PadLink" parent="android:Theme.Material.NoActionBar.Fullscreen" />
+</resources>

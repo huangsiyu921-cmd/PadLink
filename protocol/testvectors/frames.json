@@ -1,0 +1,348 @@
+{
+  "protocol": "padlink",
+  "ver": 1,
+  "frame_size": 28,
+  "rumble_size": 8,
+  "magic": "504c",
+  "button_bits": {
+    "a": 1,
+    "b": 2,
+    "x": 4,
+    "y": 8,
+    "lb": 16,
+    "rb": 32,
+    "back": 64,
+    "start": 128,
+    "l3": 256,
+    "r3": 512,
+    "guide": 1024,
+    "touchpad": 2048
+  },
+  "controllers": {
+    "xbox360": 0,
+    "ds4": 1,
+    "dualsense": 2,
+    "switchpro": 3
+  },
+  "vectors": [
+    {
+      "name": "idle",
+      "desc": "初始静默帧：全部归零，Xbox 360，player 0",
+      "bytes": "504c0100000000000000000000000000000000000000000000000000",
+      "fields": {
+        "player": 0,
+        "controller": "xbox360",
+        "rumble_ack": false,
+        "seq": 0,
+        "ts": 0,
+        "buttons": 0,
+        "dpad": 0,
+        "lx": 0,
+        "ly": 0,
+        "rx": 0,
+        "ry": 0,
+        "lt": 0,
+        "rt": 0
+      },
+      "json": {
+        "v": 1,
+        "player": 0,
+        "controller": "xbox360",
+        "seq": 0,
+        "ts": 0,
+        "buttons": 0,
+        "dpad": 0,
+        "lx": 0,
+        "ly": 0,
+        "rx": 0,
+        "ry": 0,
+        "lt": 0,
+        "rt": 0
+      }
+    },
+    {
+      "name": "a_pressed",
+      "desc": "A(bit0) 按下",
+      "bytes": "504c010001000000e803000001000000000000000000000000000000",
+      "fields": {
+        "player": 0,
+        "controller": "xbox360",
+        "rumble_ack": false,
+        "seq": 1,
+        "ts": 1000,
+        "buttons": 1,
+        "dpad": 0,
+        "lx": 0,
+        "ly": 0,
+        "rx": 0,
+        "ry": 0,
+        "lt": 0,
+        "rt": 0
+      },
+      "json": {
+        "v": 1,
+        "player": 0,
+        "controller": "xbox360",
+        "seq": 1,
+        "ts": 1000,
+        "buttons": 1,
+        "dpad": 0,
+        "lx": 0,
+        "ly": 0,
+        "rx": 0,
+        "ry": 0,
+        "lt": 0,
+        "rt": 0
+      }
+    },
+    {
+      "name": "sticks_corners",
+      "desc": "左摇杆推到右上极限、右摇杆推左下极限",
+      "bytes": "504c010002000000f803000000000000ff7fff7f0180018000000000",
+      "fields": {
+        "player": 0,
+        "controller": "xbox360",
+        "rumble_ack": false,
+        "seq": 2,
+        "ts": 1016,
+        "buttons": 0,
+        "dpad": 0,
+        "lx": 32767,
+        "ly": 32767,
+        "rx": -32767,
+        "ry": -32767,
+        "lt": 0,
+        "rt": 0
+      },
+      "json": {
+        "v": 1,
+        "player": 0,
+        "controller": "xbox360",
+        "seq": 2,
+        "ts": 1016,
+        "buttons": 0,
+        "dpad": 0,
+        "lx": 32767,
+        "ly": 32767,
+        "rx": -32767,
+        "ry": -32767,
+        "lt": 0,
+        "rt": 0
+      }
+    },
+    {
+      "name": "triggers_full",
+      "desc": "双扳机踩满",
+      "bytes": "504c01000300000008040000000000000000000000000000ff7fff7f",
+      "fields": {
+        "player": 0,
+        "controller": "xbox360",
+        "rumble_ack": false,
+        "seq": 3,
+        "ts": 1032,
+        "buttons": 0,
+        "dpad": 0,
+        "lx": 0,
+        "ly": 0,
+        "rx": 0,
+        "ry": 0,
+        "lt": 32767,
+        "rt": 32767
+      },
+      "json": {
+        "v": 1,
+        "player": 0,
+        "controller": "xbox360",
+        "seq": 3,
+        "ts": 1032,
+        "buttons": 0,
+        "dpad": 0,
+        "lx": 0,
+        "ly": 0,
+        "rx": 0,
+        "ry": 0,
+        "lt": 32767,
+        "rt": 32767
+      }
+    },
+    {
+      "name": "ds4_dpad_east",
+      "desc": "DS4 + 十字键向东",
+      "bytes": "504c0104040000001804000000000300000000000000000000000000",
+      "fields": {
+        "player": 0,
+        "controller": "ds4",
+        "rumble_ack": false,
+        "seq": 4,
+        "ts": 1048,
+        "buttons": 0,
+        "dpad": 3,
+        "lx": 0,
+        "ly": 0,
+        "rx": 0,
+        "ry": 0,
+        "lt": 0,
+        "rt": 0
+      },
+      "json": {
+        "v": 1,
+        "player": 0,
+        "controller": "ds4",
+        "seq": 4,
+        "ts": 1048,
+        "buttons": 0,
+        "dpad": 3,
+        "lx": 0,
+        "ly": 0,
+        "rx": 0,
+        "ry": 0,
+        "lt": 0,
+        "rt": 0
+      }
+    },
+    {
+      "name": "all_buttons",
+      "desc": "bit0-11 全按下（含 Touchpad），player 2",
+      "bytes": "504c01220500000028040000ff0f0000000000000000000000000000",
+      "fields": {
+        "player": 2,
+        "controller": "xbox360",
+        "rumble_ack": true,
+        "seq": 5,
+        "ts": 1064,
+        "buttons": 4095,
+        "dpad": 0,
+        "lx": 0,
+        "ly": 0,
+        "rx": 0,
+        "ry": 0,
+        "lt": 0,
+        "rt": 0
+      },
+      "json": {
+        "v": 1,
+        "player": 2,
+        "controller": "xbox360",
+        "seq": 5,
+        "ts": 1064,
+        "buttons": 4095,
+        "dpad": 0,
+        "lx": 0,
+        "ly": 0,
+        "rx": 0,
+        "ry": 0,
+        "lt": 0,
+        "rt": 0
+      }
+    },
+    {
+      "name": "seq_wrap",
+      "desc": "seq 回绕边界，player 3",
+      "bytes": "504c0103ffffffffffffffff00000000000000000000000000000000",
+      "fields": {
+        "player": 3,
+        "controller": "xbox360",
+        "rumble_ack": false,
+        "seq": 4294967295,
+        "ts": 4294967295,
+        "buttons": 0,
+        "dpad": 0,
+        "lx": 0,
+        "ly": 0,
+        "rx": 0,
+        "ry": 0,
+        "lt": 0,
+        "rt": 0
+      },
+      "json": {
+        "v": 1,
+        "player": 3,
+        "controller": "xbox360",
+        "seq": 4294967295,
+        "ts": 4294967295,
+        "buttons": 0,
+        "dpad": 0,
+        "lx": 0,
+        "ly": 0,
+        "rx": 0,
+        "ry": 0,
+        "lt": 0,
+        "rt": 0
+      }
+    },
+    {
+      "name": "ds4_negative_quarter",
+      "desc": "DS4，左摇杆左上四分之一，Y 轴为负",
+      "bytes": "504c010406000000380400000000000000e000e00000000000000040",
+      "fields": {
+        "player": 0,
+        "controller": "ds4",
+        "rumble_ack": false,
+        "seq": 6,
+        "ts": 1080,
+        "buttons": 0,
+        "dpad": 0,
+        "lx": -8192,
+        "ly": -8192,
+        "rx": 0,
+        "ry": 0,
+        "lt": 0,
+        "rt": 16384
+      },
+      "json": {
+        "v": 1,
+        "player": 0,
+        "controller": "ds4",
+        "seq": 6,
+        "ts": 1080,
+        "buttons": 0,
+        "dpad": 0,
+        "lx": -8192,
+        "ly": -8192,
+        "rx": 0,
+        "ry": 0,
+        "lt": 0,
+        "rt": 16384
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "bad_magic",
+      "desc": "magic 被改坏",
+      "bytes": "4c500100070000000000000000000000000000000000000000000000"
+    },
+    {
+      "name": "short_frame",
+      "desc": "长度只有 20 字节",
+      "bytes": "504c010008000000000000000000000000000000"
+    },
+    {
+      "name": "long_frame",
+      "desc": "长度 30 字节",
+      "bytes": "504c01000800000000000000000000000000000000000000000000000000"
+    },
+    {
+      "name": "bad_reserved",
+      "desc": "offset 15 保留字节非 0",
+      "bytes": "504c01000900000000000000000000ff000000000000000000000000"
+    },
+    {
+      "name": "bad_ver",
+      "desc": "ver = 9",
+      "bytes": "504c09000a0000000000000000000000000000000000000000000000"
+    },
+    {
+      "name": "bad_controller",
+      "desc": "controller id = 5（未定义）",
+      "bytes": "504c01140b0000000000000000000000000000000000000000000000"
+    }
+  ],
+  "rumble": {
+    "desc": "PC -> 手机，left=178 right=76",
+    "bytes": "504c010100b24c00",
+    "player": 0,
+    "left": 178,
+    "right": 76
+  }
+}
