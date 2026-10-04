@@ -2,5 +2,6 @@
   <Project Path="PadLink.Backends.ViGEm/PadLink.Backends.ViGEm.csproj" />
   <Project Path="PadLink.Core.Tests/PadLink.Core.Tests.csproj" />
   <Project Path="PadLink.Core/PadLink.Core.csproj" />
+  <Project Path="PadLink.Gui/PadLink.Gui.csproj" />
   <Project Path="PadLink.Server/PadLink.Server.csproj" />
 </Solution>

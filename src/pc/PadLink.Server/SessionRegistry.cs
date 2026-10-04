@@ -4,27 +4,42 @@ using PadLink.Core.Protocol;
 
 namespace PadLink.Server;
 
-/// <summary>按「源 IP + 源端口」管理手机会话。见 protocol.md §1。</summary>
+/// <summary>管理手机会话。</summary>
 public sealed class SessionRegistry(IVirtualControllerBackend backend) : IDisposable
 {
-    private readonly Dictionary<string, PadSession> _sessions = [];
+    /// <summary>
+    /// 按 <b>player</b> 索引，<b>不是</b>按来源地址。
+    /// <para>
+    /// 一台手柄 = 一个虚拟设备。手机重连或换了源端口时只接管已有会话，
+    /// 绝不新建——否则 XInput 的 4 个槽位很快会被历史连接占满，而且旧设备还会一直挂着。
+    /// </para>
+    /// </summary>
+    private readonly Dictionary<byte, PadSession> _sessions = [];
 
     public IReadOnlyCollection<PadSession> Sessions => _sessions.Values;
 
     /// <summary>查找会话；不存在则按帧里声明的 player / controller 创建一台虚拟手柄。</summary>
     public PadSession GetOrCreate(IPEndPoint remote, in InputFrame frame)
     {
-        var key = $"{remote.Address}:{remote.Port}";
-        if (_sessions.TryGetValue(key, out var existing)) return existing;
+        if (_sessions.TryGetValue(frame.Player, out var existing))
+        {
+            if (!existing.Remote.Equals(remote))
+            {
+                Console.WriteLine($"  P{frame.Player} 来源变更 {existing.Remote} → {remote}，沿用已有虚拟手柄");
+                existing.Rebind(remote);
+            }
+
+            return existing;
+        }
 
         if (!backend.Supports(frame.Controller))
             throw new VirtualControllerException($"后端 {backend.Name} 不支持 {frame.Controller.ToWireName()}");
 
         var controller = backend.Connect(frame.Player, frame.Controller);
         var session = new PadSession(remote, controller);
-        _sessions[key] = session;
+        _sessions[frame.Player] = session;
 
-        Console.WriteLine($"  新建会话 {key} → P{frame.Player} {frame.Controller.ToWireName()}（后端 {backend.Name}）");
+        Console.WriteLine($"  新建会话 P{frame.Player} {frame.Controller.ToWireName()} ← {remote}（后端 {backend.Name}）");
         return session;
     }
 
@@ -48,14 +63,13 @@ public sealed class SessionRegistry(IVirtualControllerBackend backend) : IDispos
             .Select(pair => pair.Key)
             .ToList();
 
-        foreach (var key in victims)
+        foreach (var player in victims)
         {
-            var session = _sessions[key];
-            _sessions.Remove(key);
+            var session = _sessions[player];
+            _sessions.Remove(player);
 
-            var idleSeconds = session.IdleFor.TotalSeconds;
             Console.WriteLine(
-                $"  回收空闲会话 {key}（{idleSeconds:F0}s 无数据），销毁虚拟手柄 P{session.Controller.Player}");
+                $"  回收空闲会话 P{player}（{session.IdleFor.TotalSeconds:F0}s 无数据），销毁虚拟手柄");
             session.Dispose();
         }
 

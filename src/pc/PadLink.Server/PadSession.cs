@@ -13,7 +13,7 @@ public sealed class PadSession(IPEndPoint remote, IVirtualController controller)
 
     private bool _hasSequence;
 
-    public IPEndPoint Remote { get; } = remote;
+    public IPEndPoint Remote { get; private set; } = remote;
 
     public IVirtualController Controller { get; } = controller;
 
@@ -65,4 +65,20 @@ public sealed class PadSession(IPEndPoint remote, IVirtualController controller)
     }
 
     public void Dispose() => Controller.Dispose();
+
+    /// <summary>
+    /// 同一台手机换了源端口（应用重启、UDP socket 重建）时接管会话。
+    /// <para>
+    /// 不新建虚拟手柄：一台手柄就该对应一个虚拟设备，否则 XInput 只有 4 个槽位，
+    /// 重连几次就被历史设备占满了。
+    /// </para>
+    /// </summary>
+    public void Rebind(IPEndPoint newRemote)
+    {
+        Remote = newRemote;
+        LastFrameTimestamp = TimeProvider.System.GetTimestamp();
+
+        // 新来源的 seq 从头开始，不能让它的第一帧被当成"丢了 N 帧"。
+        _hasSequence = false;
+    }
 }

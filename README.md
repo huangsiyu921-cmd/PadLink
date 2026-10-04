@@ -19,7 +19,9 @@ tools/
   fake_pad.py              "假手机"：按协议发包，没有 Android 端也能验证 PC 端
 src/pc/                    C# / .NET 10 解决方案
   PadLink.Core/              协议编解码、输入模型、后端抽象、fail-safe
-  PadLink.Server/            UDP 接收 + 会话管理 + 控制台调试后端
+  PadLink.Backends.ViGEm/    ViGEmBus 后端（Xbox 360 / DS4 真实虚拟手柄）
+  PadLink.Server/            UDP 接收 + 会话管理 + PadLinkHost（CLI）
+  PadLink.Gui/               WinForms 管理界面（启动/停止、连接情况、日志）
   PadLink.Core.Tests/        41 个测试，含协议向量一致性
 src/android/               Kotlin / Gradle 工程
   core/                      纯 JVM 模块：协议实现 + 11 个向量测试
@@ -35,7 +37,8 @@ research/                  参考项目源码（已被 .gitignore 忽略）
 ```powershell
 cd src\pc
 dotnet test                                                  # 41 个协议测试
-dotnet run --project PadLink.Server                          # 起服务（默认 vigem 后端，会创建真手柄）
+dotnet run --project PadLink.Gui                             # 图形界面（推荐：启动/停止 + 连接情况 + 日志）
+dotnet run --project PadLink.Server                          # 命令行起服务（默认 vigem 后端，会创建真手柄）
 dotnet run --project PadLink.Server -- --backend console     # 只在控制台打印，不碰驱动
 dotnet run --project PadLink.Server -- --verify              # 自检：建手柄 → XInput 回读比对（12 项）
 dotnet run --project PadLink.Server -- --probe               # 只读 XInput，看系统里有没有输入

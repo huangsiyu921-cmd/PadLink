@@ -26,11 +26,6 @@ var idleTimeout = double.TryParse(OptionValue(args, "--idle-seconds"), out var i
     ? TimeSpan.FromSeconds(idleSeconds)
     : ProtocolConstants.IdleSessionTimeout;
 
-// 扫描周期取阈值的 1/4，夹在 200ms 与 5s 之间：既不会太迟钝，也不会空转。
-var reapInterval = TimeSpan.FromMilliseconds(
-    Math.Clamp(idleTimeout.TotalMilliseconds / 4, 200, 5000));
-var reapEveryNTicks = Math.Max(1, (int)(reapInterval.TotalMilliseconds / 50));
-
 IVirtualControllerBackend backend;
 try
 {
@@ -49,79 +44,52 @@ catch (Exception ex)
     return 1;
 }
 
-using (backend)
-using (var registry = new SessionRegistry(backend))
+PadLinkHost host;
+try
 {
-    UdpInputServer server;
+    host = new PadLinkHost(backend, udpPort, idleTimeout);
+}
+catch (SocketException ex)
+{
+    Console.WriteLine($"UDP 端口 {udpPort} 绑定失败：{ex.Message}");
+    Console.WriteLine("换一个端口：dotnet run --project PadLink.Server -- --port 12345");
+    backend.Dispose();
+    return 1;
+}
+
+using (host)
+{
+    host.Start();
+
+    foreach (var address in LocalAddresses())
+        Console.WriteLine($"  本机地址 {address}:{udpPort}");
+    Console.WriteLine("等待数据帧…（Ctrl+C 退出）");
+
+    using var cts = new CancellationTokenSource();
+    Console.CancelKeyPress += (_, e) =>
+    {
+        e.Cancel = true;
+        cts.Cancel();
+    };
+
     try
     {
-        server = new UdpInputServer(udpPort, registry);
+        await Task.Delay(Timeout.Infinite, cts.Token);
     }
-    catch (SocketException ex)
+    catch (OperationCanceledException)
     {
-        Console.WriteLine($"UDP 端口 {udpPort} 绑定失败：{ex.Message}");
-        Console.WriteLine("换一个端口：dotnet run --project PadLink.Server -- --port 12345");
-        return 1;
+        // Ctrl+C
     }
 
-    using (server)
+    foreach (var session in host.Sessions)
     {
-        Console.WriteLine($"PadLink 服务端 · 后端 {backend.Name}");
-        Console.WriteLine($"UDP :{udpPort}   fail-safe {ProtocolConstants.FailSafeTimeout.TotalMilliseconds:F0}ms（只归零）   "
-                          + $"空闲 {idleTimeout.TotalSeconds:F0}s 回收会话");
-        Console.WriteLine($"节拍 {ProtocolConstants.ActiveRateHz}Hz / 保活 {ProtocolConstants.IdleRateHz}Hz");
-        foreach (var address in LocalAddresses())
-            Console.WriteLine($"  本机地址 {address}:{udpPort}");
-        Console.WriteLine("等待数据帧…（Ctrl+C 退出）");
-
-        using var cts = new CancellationTokenSource();
-        Console.CancelKeyPress += (_, e) =>
-        {
-            e.Cancel = true;
-            cts.Cancel();
-        };
-
-        var maintainLoop = Task.Run(async () =>
-        {
-            using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(50));
-            var ticks = 0;
-            try
-            {
-                while (await timer.WaitForNextTickAsync(cts.Token))
-                {
-                    registry.PollFailSafe();
-
-                    // 定期扫空闲会话并销毁其虚拟手柄（阈值默认 5 分钟，见 ProtocolConstants）。
-                    if (++ticks % reapEveryNTicks == 0)
-                        registry.ReapIdleSessions(idleTimeout);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                // 正常退出
-            }
-        }, cts.Token);
-
-        try
-        {
-            await server.RunAsync(cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            // 正常退出
-        }
-
-        await maintainLoop;
-
-        foreach (var session in registry.Sessions)
-        {
-            var total = session.FramesReceived + session.FramesLost;
-            var loss = total == 0 ? 0 : 100.0 * session.FramesLost / total;
-            var seconds = session.FramesReceived / (double)ProtocolConstants.ActiveRateHz;
-            Console.WriteLine(
-                $"{session.Remote}  收到 {session.FramesReceived} 帧，丢 {session.FramesLost} 帧（{loss:F2}%），约 {seconds:F1} 秒");
-        }
+        var total = session.FramesReceived + session.FramesLost;
+        var loss = total == 0 ? 0 : 100.0 * session.FramesLost / total;
+        Console.WriteLine(
+            $"{session.Remote}  收到 {session.FramesReceived} 帧，丢 {session.FramesLost} 帧（{loss:F2}%）");
     }
+
+    Console.WriteLine("正在停止…");
 }
 
 Console.WriteLine("已退出。");
