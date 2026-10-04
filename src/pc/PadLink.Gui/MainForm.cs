@@ -7,17 +7,13 @@ using PadLink.Server;
 namespace PadLink.Gui;
 
 /// <summary>
-/// PC 端管理界面：启动/停止服务，直观看到谁连着、丢包多少、有没有卡住。
-/// 界面很朴素（WinForms），够用就行——它只是壳，真正的活都在 <see cref="PadLinkHost"/> 里。
+/// PC 端管理界面。配色与结构跟 Android 端对齐：
+/// 深色底、顶上只一条（状态在左、设置居中）、其余都收进设置弹窗。
 /// </summary>
 public sealed class MainForm : Form
 {
-    private const string AppFont = "Microsoft YaHei UI";
-
-    private readonly Button _startButton = new();
-    private readonly Button _stopButton = new();
-    private readonly Button _adbButton = new();
     private readonly Label _statusLabel = new();
+    private readonly Button _settingsButton = new();
     private readonly DataGridView _sessionGrid = new();
     private readonly TextBox _logBox = new();
     private readonly System.Windows.Forms.Timer _refreshTimer = new() { Interval = 500 };
@@ -27,6 +23,11 @@ public sealed class MainForm : Form
     private readonly string _localAddress;
     private bool _exiting;
 
+    /// <summary>PC 端要模拟成什么手柄。切换会让服务重建一次。</summary>
+    internal ControllerType PreferredController { get; private set; } = ControllerType.Xbox360;
+
+    internal bool IsRunning => _host is not null;
+
     public MainForm()
     {
         _localAddress = Dns.GetHostAddresses(Dns.GetHostName())
@@ -35,10 +36,11 @@ public sealed class MainForm : Form
 
         Text = "PadLink";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(760, 480);
-        Size = new Size(900, 620);
-        Font = new Font(AppFont, 9f);
-        BackColor = Color.FromArgb(243, 243, 243);
+        MinimumSize = new Size(820, 480);
+        Size = new Size(940, 600);
+        Font = PadTheme.Body;
+        BackColor = PadTheme.Background;
+        ForeColor = PadTheme.Text;
 
         BuildLayout();
 
@@ -48,16 +50,148 @@ public sealed class MainForm : Form
         Console.SetOut(new TeeTextWriter(new TextBoxWriter(_logBox), fileLog));
         Console.SetError(new TeeTextWriter(new TextBoxWriter(_logBox), fileLog));
 
-        _refreshTimer.Tick += (_, _) => RefreshSessions();
-        Shown += (_, _) => StartServer();
-        FormClosing += OnFormClosing;
-
         // 缩到托盘后没有主窗口，出了事很难发现——把未处理异常也记进日志。
         Application.ThreadException += (_, e) => Console.WriteLine($"未处理的界面异常：{e.Exception}");
         AppDomain.CurrentDomain.UnhandledException +=
             (_, e) => Console.WriteLine($"未处理的异常：{e.ExceptionObject}");
 
         SetupTrayIcon();
+
+        _refreshTimer.Tick += (_, _) => RefreshStatus();
+        Shown += (_, _) => StartServer();
+        FormClosing += OnFormClosing;
+    }
+
+    // ------------------------------------------------------------------ 界面
+
+    private void BuildLayout()
+    {
+        SuspendLayout();
+
+        // 顶上：状态在左、设置居中——跟 Android 的顶部条一个排法。
+        var top = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 54,
+            ColumnCount = 3,
+            BackColor = PadTheme.Background,
+            Padding = new Padding(14, 8, 14, 8),
+        };
+        top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40f));
+        top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20f));
+        top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40f));
+
+        _statusLabel.Dock = DockStyle.Fill;
+        _statusLabel.TextAlign = ContentAlignment.MiddleLeft;
+        _statusLabel.ForeColor = PadTheme.TextMuted;
+        _statusLabel.Text = "未启动";
+        _statusLabel.AutoEllipsis = true;
+
+        _settingsButton.Text = "设置";
+        _settingsButton.Dock = DockStyle.Fill;
+        _settingsButton.Margin = new Padding(30, 0, 30, 0);
+        _settingsButton.FlatStyle = FlatStyle.Flat;
+        _settingsButton.FlatAppearance.BorderSize = 0;
+        _settingsButton.FlatAppearance.MouseOverBackColor = PadTheme.SurfaceHover;
+        _settingsButton.FlatAppearance.MouseDownBackColor = PadTheme.Accent;
+        _settingsButton.BackColor = PadTheme.Surface;
+        _settingsButton.ForeColor = PadTheme.Text;
+        _settingsButton.Cursor = Cursors.Hand;
+        _settingsButton.UseVisualStyleBackColor = false;
+        _settingsButton.Click += (_, _) => OpenSettings();
+
+        top.Controls.Add(_statusLabel, 0, 0);
+        top.Controls.Add(_settingsButton, 1, 0);
+
+        // 日志在下：深色等宽，一眼能看出归零 / 回收这些事件。
+        _logBox.Dock = DockStyle.Bottom;
+        _logBox.Height = 190;
+        _logBox.Multiline = true;
+        _logBox.ReadOnly = true;
+        _logBox.WordWrap = false;
+        _logBox.ScrollBars = ScrollBars.Both;
+        _logBox.BorderStyle = BorderStyle.None;
+        _logBox.BackColor = Color.FromArgb(21, 21, 21);
+        _logBox.ForeColor = PadTheme.TextMuted;
+        _logBox.Font = PadTheme.Mono;
+
+        ConfigureGrid();
+
+        // 顺序有讲究：Fill 先加，边缘区域后加，这样 Top/Bottom 才能真正压住边缘。
+        Controls.Add(_sessionGrid);
+        Controls.Add(_logBox);
+        Controls.Add(top);
+
+        ResumeLayout();
+    }
+
+    private void ConfigureGrid()
+    {
+        _sessionGrid.Dock = DockStyle.Fill;
+        _sessionGrid.AllowUserToAddRows = false;
+        _sessionGrid.AllowUserToDeleteRows = false;
+        _sessionGrid.AllowUserToResizeRows = false;
+        _sessionGrid.ReadOnly = true;
+        _sessionGrid.RowHeadersVisible = false;
+        _sessionGrid.MultiSelect = false;
+        _sessionGrid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+        _sessionGrid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+        _sessionGrid.BorderStyle = BorderStyle.None;
+        _sessionGrid.EnableHeadersVisualStyles = false;
+        _sessionGrid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+        _sessionGrid.ColumnHeadersHeight = 32;
+        _sessionGrid.RowTemplate.Height = 30;
+        _sessionGrid.GridColor = PadTheme.SurfaceLine;
+
+        _sessionGrid.BackgroundColor = PadTheme.Background;
+        _sessionGrid.DefaultCellStyle.BackColor = PadTheme.Background;
+        _sessionGrid.DefaultCellStyle.ForeColor = PadTheme.Text;
+        _sessionGrid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(48, 74, 128);
+        _sessionGrid.DefaultCellStyle.SelectionForeColor = PadTheme.Text;
+
+        _sessionGrid.ColumnHeadersDefaultCellStyle.BackColor = PadTheme.Surface;
+        _sessionGrid.ColumnHeadersDefaultCellStyle.ForeColor = PadTheme.TextMuted;
+        _sessionGrid.ColumnHeadersDefaultCellStyle.SelectionBackColor = PadTheme.Surface;
+
+        _sessionGrid.Columns.AddRange(
+            new DataGridViewTextBoxColumn { Name = "address", HeaderText = "地址", FillWeight = 32 },
+            new DataGridViewTextBoxColumn { Name = "pad", HeaderText = "手柄", FillWeight = 14 },
+            new DataGridViewTextBoxColumn { Name = "player", HeaderText = "玩家", FillWeight = 10 },
+            new DataGridViewTextBoxColumn { Name = "frames", HeaderText = "已收帧", FillWeight = 14 },
+            new DataGridViewTextBoxColumn { Name = "loss", HeaderText = "丢包", FillWeight = 10 },
+            new DataGridViewTextBoxColumn { Name = "idle", HeaderText = "空闲", FillWeight = 10 },
+            new DataGridViewTextBoxColumn { Name = "state", HeaderText = "状态", FillWeight = 10 });
+
+        // 表头不走 WinForms 那套样式了：ColumnHeadersDefaultCellStyle 实测压不住系统视觉样式，
+        // 句柄一建出来就被盖回浅灰。干脆自己画，稳。
+        _sessionGrid.CellPainting += PaintHeaderCell;
+    }
+
+    private void PaintHeaderCell(object? sender, DataGridViewCellPaintingEventArgs e)
+    {
+        if (e.RowIndex != -1 || e.ColumnIndex < 0) return;
+
+        var bounds = e.CellBounds;
+
+        using (var fill = new SolidBrush(PadTheme.Surface))
+        {
+            e.Graphics!.FillRectangle(fill, bounds);
+        }
+
+        using (var line = new Pen(PadTheme.SurfaceLine))
+        {
+            e.Graphics!.DrawLine(line, bounds.Left, bounds.Bottom - 1, bounds.Right - 1, bounds.Bottom - 1);
+        }
+
+        TextRenderer.DrawText(
+            e.Graphics!,
+            e.FormattedValue?.ToString() ?? string.Empty,
+            PadTheme.BodySmall,
+            bounds,
+            PadTheme.TextMuted,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+
+        e.Handled = true;
     }
 
     // ------------------------------------------------------------------ 托盘
@@ -83,7 +217,6 @@ public sealed class MainForm : Form
         //
         // ⚠️ 实测坑：外部进程发来的 WM_CLOSE 会被判成 TaskManagerClosing，不是 UserClosing；
         // 真实点右上角 X 走的是 WM_SYSCOMMAND/SC_CLOSE，reason 才是 UserClosing。
-        // 自己写脚本测这块时别用 SendMessage(WM_CLOSE)，要发 SC_CLOSE。
         var systemClosing = e.CloseReason is CloseReason.WindowsShutDown or CloseReason.TaskManagerClosing;
         if (!_exiting && !systemClosing)
         {
@@ -99,7 +232,6 @@ public sealed class MainForm : Form
     {
         // 千万别在这里动 ShowInTaskbar：改它会让 WinForms 销毁并重建窗口句柄，
         // 而主窗体句柄一销毁，Application.Run 就直接返回 —— 进程会"假装缩到托盘"然后退出。
-        // Hide() 就够了，窗口不可见时任务栏按钮本来也会消失。
         Hide();
         _trayIcon.Visible = true;
         UpdateTrayText();
@@ -140,118 +272,34 @@ public sealed class MainForm : Form
         base.Dispose(disposing);
     }
 
-    // ------------------------------------------------------------------ 界面
-
-    private void BuildLayout()
+    /// <summary>让标题栏也跟着变深，否则窗口边框那条白跟里面的深色底格格不入。</summary>
+    protected override void OnHandleCreated(EventArgs e)
     {
-        SuspendLayout();
-
-        var top = new Panel
-        {
-            Dock = DockStyle.Top,
-            Height = 56,
-            BackColor = Color.White,
-            Padding = new Padding(16, 12, 16, 12),
-        };
-
-        StyleButton(_startButton, "启动", 0, StartServer);
-        StyleButton(_stopButton, "停止", 96, StopServer);
-        StyleButton(_adbButton, "ADB 连接", 192, EstablishAdbTunnel);
-        _stopButton.Enabled = false;
-        _adbButton.Enabled = false;
-
-        _statusLabel.AutoSize = false;
-        _statusLabel.Location = new Point(308, 20);
-        _statusLabel.Size = new Size(560, 20);
-        _statusLabel.ForeColor = Color.FromArgb(90, 90, 90);
-        _statusLabel.Text = "未启动";
-
-        top.Controls.Add(_startButton);
-        top.Controls.Add(_stopButton);
-        top.Controls.Add(_adbButton);
-        top.Controls.Add(_statusLabel);
-
-        // 日志在下：深色等宽字体，一眼能看出归零 / 回收这些事件。
-        _logBox.Dock = DockStyle.Bottom;
-        _logBox.Height = 190;
-        _logBox.Multiline = true;
-        _logBox.ReadOnly = true;
-        _logBox.WordWrap = false;
-        _logBox.ScrollBars = ScrollBars.Both;
-        _logBox.BorderStyle = BorderStyle.None;
-        _logBox.BackColor = Color.FromArgb(32, 32, 32);
-        _logBox.ForeColor = Color.FromArgb(206, 206, 206);
-        _logBox.Font = new Font("Consolas", 9f);
-
-        ConfigureGrid();
-
-        // 顺序有讲究：Fill 先加，边缘区域后加，这样 Top/Bottom 才能真正压住边缘。
-        Controls.Add(_sessionGrid);
-        Controls.Add(_logBox);
-        Controls.Add(top);
-
-        ResumeLayout();
+        base.OnHandleCreated(e);
+        DarkTitleBar.Apply(this);
     }
 
-    private static TextWriter OpenLogFile()
+    private void OpenSettings()
     {
-        var dir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PadLink");
-        Directory.CreateDirectory(dir);
-
-        // 每次启动截断：日志只用于排障，不需要累积历史。
-        return new StreamWriter(Path.Combine(dir, "padlink-gui.log"), append: false) { AutoFlush = true };
-    }
-
-    private static void StyleButton(Button button, string text, int x, Action onClick)
-    {
-        button.Text = text;
-        button.Location = new Point(16 + x, 12);
-        button.Size = new Size(88, 32);
-        button.FlatStyle = FlatStyle.System;
-        button.Click += (_, _) => onClick();
-    }
-
-    private void ConfigureGrid()
-    {
-        _sessionGrid.Dock = DockStyle.Fill;
-        _sessionGrid.AllowUserToAddRows = false;
-        _sessionGrid.AllowUserToDeleteRows = false;
-        _sessionGrid.AllowUserToResizeRows = false;
-        _sessionGrid.ReadOnly = true;
-        _sessionGrid.RowHeadersVisible = false;
-        _sessionGrid.MultiSelect = false;
-        _sessionGrid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-        _sessionGrid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-        _sessionGrid.BackgroundColor = Color.White;
-        _sessionGrid.BorderStyle = BorderStyle.None;
-        _sessionGrid.EnableHeadersVisualStyles = false;
-        _sessionGrid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(248, 248, 248);
-        _sessionGrid.ColumnHeadersDefaultCellStyle.ForeColor = Color.FromArgb(80, 80, 80);
-        _sessionGrid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
-        _sessionGrid.ColumnHeadersHeight = 30;
-        _sessionGrid.RowTemplate.Height = 28;
-
-        _sessionGrid.Columns.AddRange(
-            new DataGridViewTextBoxColumn { Name = "address", HeaderText = "地址", FillWeight = 30 },
-            new DataGridViewTextBoxColumn { Name = "pad", HeaderText = "手柄", FillWeight = 15 },
-            new DataGridViewTextBoxColumn { Name = "player", HeaderText = "玩家", FillWeight = 10 },
-            new DataGridViewTextBoxColumn { Name = "frames", HeaderText = "已收帧", FillWeight = 15 },
-            new DataGridViewTextBoxColumn { Name = "loss", HeaderText = "丢包", FillWeight = 10 },
-            new DataGridViewTextBoxColumn { Name = "idle", HeaderText = "空闲", FillWeight = 10 },
-            new DataGridViewTextBoxColumn { Name = "state", HeaderText = "状态", FillWeight = 10 });
+        using var dialog = new SettingsDialog(this);
+        dialog.ShowDialog(this);
     }
 
     // ------------------------------------------------------------------ 服务控制
 
-    private void StartServer()
+    internal void StartServer()
     {
         if (_host is not null) return;
 
         try
         {
             var backend = new ViGEmBackend();
-            _host = new PadLinkHost(backend, ProtocolConstants.UdpPort, ProtocolConstants.IdleSessionTimeout);
+            _host = new PadLinkHost(
+                backend,
+                ProtocolConstants.UdpPort,
+                ProtocolConstants.IdleSessionTimeout,
+                ProtocolConstants.ControlPort,
+                PreferredController);
             _host.Start();
         }
         catch (Exception ex)
@@ -262,23 +310,19 @@ public sealed class MainForm : Form
             // 不弹 MessageBox：模态框会把界面卡住等人点，而完整堆栈日志里已经有了。
             Console.WriteLine($"启动失败：{ex}");
             _statusLabel.Text = $"启动失败：{ex.Message}";
-            _statusLabel.ForeColor = Color.FromArgb(180, 60, 40);
+            _statusLabel.ForeColor = PadTheme.Error;
             return;
         }
 
-        _startButton.Enabled = false;
-        _stopButton.Enabled = true;
-        _adbButton.Enabled = _host.AdbModeAvailable;
-        _statusLabel.ForeColor = Color.FromArgb(90, 90, 90);
         _refreshTimer.Start();
-        RefreshSessions();
+        RefreshStatus();
 
         // 插着线就把隧道顺手建好；没插线也不吵，日志里留一句就走。
         var (ok, message) = _host.TryEstablishAdbTunnel();
         Console.WriteLine(ok ? $"ADB 隧道已建立：{message}" : $"ADB 隧道未建立：{message}");
     }
 
-    private void StopServer()
+    internal void StopServer()
     {
         _refreshTimer.Stop();
 
@@ -288,29 +332,48 @@ public sealed class MainForm : Form
         _host = null;
 
         _sessionGrid.Rows.Clear();
-        _startButton.Enabled = true;
-        _stopButton.Enabled = false;
-        _adbButton.Enabled = false;
         _statusLabel.Text = "已停止";
+        _statusLabel.ForeColor = PadTheme.TextMuted;
+        UpdateTrayText();
     }
 
     /// <summary>建 adb reverse 隧道：手机插着线并授权后，连自己的 127.0.0.1 就能打到这台机器。</summary>
-    private void EstablishAdbTunnel()
+    internal void EstablishAdbTunnel()
     {
         if (_host is null) return;
 
         var (ok, message) = _host.TryEstablishAdbTunnel();
         Console.WriteLine(ok ? $"ADB 隧道：{message}" : $"ADB 隧道失败：{message}");
+        _statusLabel.ForeColor = ok ? PadTheme.Ok : PadTheme.Error;
         _statusLabel.Text = ok ? "ADB 隧道已建立" : $"ADB 隧道失败：{message}";
+    }
+
+    /// <summary>
+    /// 换了手柄类型。类型是建服务时定下来的（驱动层面创建设备），所以要重建一次；
+    /// 正在跑就自动重启，免得用户还要手动点两下。
+    /// </summary>
+    internal void SetControllerType(ControllerType type)
+    {
+        if (type == PreferredController) return;
+
+        PreferredController = type;
+        Console.WriteLine($"手柄类型 → {type.ToWireName()}");
+
+        if (_host is null) return;
+
+        Console.WriteLine("正在按新类型重建服务…");
+        StopServer();
+        StartServer();
     }
 
     // ------------------------------------------------------------------ 状态刷新
 
-    private void RefreshSessions()
+    private void RefreshStatus()
     {
         if (_host is null)
         {
             _statusLabel.Text = "未启动";
+            _statusLabel.ForeColor = PadTheme.TextMuted;
             UpdateTrayText();
             return;
         }
@@ -337,19 +400,26 @@ public sealed class MainForm : Form
             row.Cells["loss"].Value = $"{loss:F1}%";
             row.Cells["idle"].Value = $"{session.IdleFor.TotalSeconds:F1}s";
             row.Cells["state"].Value = session.Stale ? "已归零" : "输入中";
-            row.DefaultCellStyle.ForeColor = session.Stale
-                ? Color.FromArgb(160, 120, 0)
-                : Color.FromArgb(30, 30, 30);
+            row.DefaultCellStyle.ForeColor = session.Stale ? PadTheme.Warn : PadTheme.Text;
         }
 
-        var head = _host.AdbModeAvailable
-            ? $"监听中 · {_localAddress} · ADB :{_host.TcpPort} / UDP :{_host.UdpPort} · "
-            : $"监听中 · {_localAddress} · UDP :{_host.UdpPort} · ";
-
+        var controller = PreferredController.ToWireName();
+        var head = $"{_localAddress} · {controller} · ";
         _statusLabel.Text = sessions.Count == 0
             ? head + "等待手机连接"
             : head + $"{sessions.Count} 个手柄";
+        _statusLabel.ForeColor = sessions.Count == 0 ? PadTheme.TextMuted : PadTheme.Ok;
 
         UpdateTrayText();
+    }
+
+    private static TextWriter OpenLogFile()
+    {
+        var dir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PadLink");
+        Directory.CreateDirectory(dir);
+
+        // 每次启动截断：日志只用于排障，不需要累积历史。
+        return new StreamWriter(Path.Combine(dir, "padlink-gui.log"), append: false) { AutoFlush = true };
     }
 }

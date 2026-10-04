@@ -3,6 +3,8 @@ package com.padlink.app.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -28,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -233,12 +236,46 @@ private fun SectionTitle(text: String) {
     )
 }
 
-/** 导出布局：摆出文本让人复制走，拿到后固化成默认布局。 */
+/**
+ * 布局文件：存成文件带走，或者从文件读回来。
+ *
+ * 走系统的 Storage Access Framework，不需要任何存储权限，存哪儿由用户决定。
+ */
 @Composable
-fun ExportDialog(layout: PadLayout, onDismiss: () -> Unit) {
+fun ExportDialog(
+    layout: PadLayout,
+    onDismiss: () -> Unit,
+    onImport: (PadLayout) -> Unit,
+) {
+    val context = LocalContext.current
+
+    val saveLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(layout.encode().toByteArray(Charsets.UTF_8))
+                }
+            }
+        }
+    }
+
+    val openLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        val text = uri?.let { picked ->
+            runCatching {
+                context.contentResolver.openInputStream(picked)?.use { it.readBytes().decodeToString() }
+            }.getOrNull()
+        }
+
+        if (text != null) onImport(PadLayout.decode(text))
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("导出布局", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) },
+        title = { Text("布局文件", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) },
         text = {
             Column(
                 modifier = Modifier
@@ -246,7 +283,7 @@ fun ExportDialog(layout: PadLayout, onDismiss: () -> Unit) {
                     .heightIn(max = DialogScrollMax)
                     .verticalScroll(rememberScrollState()),
             ) {
-                Text("长按选中这段，复制发给我。", fontSize = 12.sp, color = HintColor)
+                Text("也可以长按选中下面这段复制发我。", fontSize = 12.sp, color = HintColor)
                 SelectionContainer {
                     Text(
                         text = layout.encode(),
@@ -257,7 +294,17 @@ fun ExportDialog(layout: PadLayout, onDismiss: () -> Unit) {
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("好") } },
+        confirmButton = {
+            Row {
+                TextButton(onClick = { openLauncher.launch(arrayOf("text/plain", "*/*")) }) {
+                    Text("从文件导入")
+                }
+                TextButton(onClick = { saveLauncher.launch("padlink-layout.txt") }) {
+                    Text("保存到文件")
+                }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("好") } },
     )
 }
 

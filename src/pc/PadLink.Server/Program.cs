@@ -26,6 +26,19 @@ var idleTimeout = double.TryParse(OptionValue(args, "--idle-seconds"), out var i
     ? TimeSpan.FromSeconds(idleSeconds)
     : ProtocolConstants.IdleSessionTimeout;
 
+// --controller：PC 端指定虚拟手柄的类型，盖过手机在帧里声明的那个。
+ControllerType? preferredController = null;
+if (OptionValue(args, "--controller") is { } controllerName)
+{
+    if (!ControllerTypeWire.TryParse(controllerName, out var parsedType))
+    {
+        Console.WriteLine($"未知手柄类型「{controllerName}」，可选 xbox360 / ds4");
+        return 1;
+    }
+
+    preferredController = parsedType;
+}
+
 IVirtualControllerBackend backend;
 try
 {
@@ -47,7 +60,7 @@ catch (Exception ex)
 PadLinkHost host;
 try
 {
-    host = new PadLinkHost(backend, udpPort, idleTimeout, ProtocolConstants.ControlPort);
+    host = new PadLinkHost(backend, udpPort, idleTimeout, ProtocolConstants.ControlPort, preferredController);
 }
 catch (SocketException ex)
 {

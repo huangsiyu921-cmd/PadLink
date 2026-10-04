@@ -26,14 +26,16 @@ public sealed class PadLinkHost : IDisposable
     private bool _disposed;
 
     /// <param name="tcpPort">ADB 模式用的 TCP 端口；传 null 就只用 UDP。</param>
+    /// <param name="preferredController">PC 端指定的手柄类型；null 表示跟随手机声明。</param>
     public PadLinkHost(IVirtualControllerBackend backend, int udpPort, TimeSpan idleTimeout,
-        int? tcpPort = ProtocolConstants.ControlPort)
+        int? tcpPort = ProtocolConstants.ControlPort, ControllerType? preferredController = null)
     {
         _backend = backend;
         _idleTimeout = idleTimeout;
         UdpPort = udpPort;
+        PreferredController = preferredController;
 
-        _registry = new SessionRegistry(backend);
+        _registry = new SessionRegistry(backend, preferredController);
         _udpServer = new UdpInputServer(udpPort, _registry);
 
         // TCP 绑不上（端口被占之类）不该把整个服务拖死：记一笔，UDP 照常跑。
@@ -59,6 +61,9 @@ public sealed class PadLinkHost : IDisposable
 
     public int UdpPort { get; }
 
+    /// <summary>PC 端指定的手柄类型；null 表示跟随手机声明。</summary>
+    public ControllerType? PreferredController { get; }
+
     /// <summary>ADB 模式用的 TCP 端口；为 0 表示没启用。</summary>
     public int TcpPort { get; }
 
@@ -79,7 +84,8 @@ public sealed class PadLinkHost : IDisposable
         _cts = new CancellationTokenSource();
         var token = _cts.Token;
 
-        Console.WriteLine($"PadLink 服务端 · 后端 {BackendName}");
+        var controllerLabel = PreferredController is { } type ? type.ToWireName() : "跟随手机";
+        Console.WriteLine($"PadLink 服务端 · 后端 {BackendName} · 手柄 {controllerLabel}");
         Console.WriteLine($"UDP :{UdpPort}（WiFi）"
                           + (_tcpServer is null ? "   TCP：未启用" : $"   TCP :{TcpPort}（ADB）")
                           + $"   fail-safe {ProtocolConstants.FailSafeTimeout.TotalMilliseconds:F0}ms（只归零）"

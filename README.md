@@ -1,62 +1,75 @@
 # PadLink
 
-把 Android 手机变成 PC 的虚拟手柄：手机端渲染并采集触摸输入，经 WiFi / ADB 送到 PC，PC 端模拟出系统认得的 Xbox 360 / DS4 手柄。
+把 Android 手机变成 PC 的虚拟手柄：手机端渲染并采集触摸输入，经 WiFi / ADB 送到 PC，PC 端模拟出系统认得的 Xbox 360 / PS4 手柄。
 
 - **PC 端**：C# / .NET 10，仅 Windows
 - **移动端**：Kotlin + Android Studio，Material 3（手柄本体自绘 Canvas）
-- **虚拟手柄后端**：ViGEmBus 起步，`IVirtualControllerBackend` 抽象预留 VIIPER
+- **虚拟手柄**：ViGEmBus，可在 **Xbox 360 / PlayStation 4** 之间切换（PC 端说了算）
 - **传输**：WiFi (UDP) / ADB (TCP + `adb reverse`)
-- **布局**：控件位置/大小可拖动 + 双指缩放，改动存本地；扳机（滑动条 / 按钮）与十字键（8 方向 / 三角分键）各有两种样式
-- **状态**：**ADB 模式端到端跑通（真机验收）**；WiFi 模式已实现待真机验收
+- **布局**：控件位置/大小可拖动 + 双指缩放，可导出成文件；扳机（滑动条 / 按钮）与十字键（8 方向 / 三角分键）各有两种样式
+- **状态**：ADB 模式端到端跑通（真机验收）
 
 ## 目录
 
 ```
-protocol/
-  protocol.md              两端唯一契约（端口、握手、数据帧、时序、容错）
-  testvectors/frames.json  协议测试向量，由 tools/gen_testvectors.py 生成，两端共用
-tools/
-  gen_testvectors.py       向量生成器，同时是协议的 Python 参考实现
-  fake_pad.py              "假手机"：按协议发包，没有 Android 端也能验证 PC 端
-src/pc/                    C# / .NET 10 解决方案
-  PadLink.Core/              协议编解码、输入模型、后端抽象、fail-safe
-  PadLink.Backends.ViGEm/    ViGEmBus 后端（Xbox 360 / DS4 真实虚拟手柄）
-  PadLink.Server/            UDP 接收 + 会话管理 + PadLinkHost（CLI）
-  PadLink.Gui/               WinForms 管理界面（启动/停止、连接情况、日志）
-  PadLink.Core.Tests/        41 个测试，含协议向量一致性
-src/android/               Kotlin / Gradle 工程
-  core/                      纯 JVM 模块：协议实现 + 11 个向量测试
-  app/                       Android 应用（Compose 手柄界面 + TCP/UDP 传输）
-docs/                      企划审查 / 技术路线 / 路线图
-research/                  参考项目源码（已被 .gitignore 忽略）
+D:\PadLink\
+  working tree\          ← 源码，本 git 仓库
+    protocol\              两端唯一契约 + 测试向量
+    tools\                 向量生成器 / 假手机 / adb 隧道探针
+    src\pc\                C# / .NET 10 解决方案
+    src\android\           Kotlin / Gradle 工程
+    docs\                  企划审查 / 技术路线 / 路线图
+    build.ps1              编译 PC 端并发布到 ..\app
+    research\              参考项目源码（.gitignore 忽略）
+
+  app\                   ← PC 端编译产物，不在 git 里
+    PadLink.Gui.exe        双击就用
 ```
+
+`src\pc` 里各项目：
+
+| 项目 | 作用 |
+|---|---|
+| `PadLink.Core` | 协议编解码、输入模型、后端抽象、fail-safe |
+| `PadLink.Backends.ViGEm` | ViGEmBus 后端（Xbox 360 / DS4） |
+| `PadLink.Server` | UDP/TCP 接收 + 会话管理 + `PadLinkHost`（CLI） |
+| `PadLink.Gui` | WinForms 管理界面 |
+| `PadLink.Core.Tests` | 41 个测试，含协议向量一致性 |
 
 ## 怎么跑
 
-### PC 端
+### 直接用
+
+双击 `app\PadLink.Gui.exe`。界面里点「设置」能启动/停止服务、建 ADB 隧道、切换手柄类型。
+
+### 改完代码重新发布
 
 ```powershell
-cd src\pc
+cd "D:\PadLink\working tree"
+.\build.ps1
+```
+
+### 开发调试
+
+```powershell
+cd "D:\PadLink\working tree\src\pc"
 dotnet test                                                  # 41 个协议测试
-dotnet run --project PadLink.Gui                             # 图形界面（推荐：启动/停止 + 连接情况 + 日志）
-dotnet run --project PadLink.Server                          # 命令行起服务（默认 vigem 后端，会创建真手柄）
-dotnet run --project PadLink.Server -- --backend console     # 只在控制台打印，不碰驱动
-dotnet run --project PadLink.Server -- --adb                 # 起服务并自动建 adb reverse 隧道（ADB 模式）
-dotnet run --project PadLink.Server -- --verify              # 自检：建手柄 → XInput 回读比对（12 项）
-dotnet run --project PadLink.Server -- --probe               # 只读 XInput，看系统里有没有输入
+dotnet run --project PadLink.Server                          # 命令行起服务
+dotnet run --project PadLink.Server -- --controller ds4       # 以 PS4 身份出现（Steam 认得出）
+dotnet run --project PadLink.Server -- --adb                  # 起服务并自动建 adb reverse 隧道
+dotnet run --project PadLink.Server -- --verify               # 自检：建手柄 → XInput 回读比对
+dotnet run --project PadLink.Server -- --probe                # 只读 XInput，看系统里有没有输入
 ```
 
 另开一个终端：
 
 ```powershell
-python tools/fake_pad.py                 # 跑 5 秒演示序列（UDP / WiFi 模式）
-python tools/fake_pad.py --transport tcp # 走 TCP（ADB 模式，会先握手再发帧）
-python tools/fake_pad.py --mode discover # 广播探测 PC
-python tools/fake_pad.py --mode hold     # 持续按住 A（Ctrl+C 退出，可观察 fail-safe）
+cd "D:\PadLink\working tree"
+python tools/fake_pad.py                  # 5 秒演示序列（UDP / WiFi 模式）
+python tools/fake_pad.py --transport tcp  # 走 TCP（ADB 模式，会先握手再发帧）
+python tools/fake_pad.py --mode discover  # 广播探测 PC
+python tools/fake_pad.py --mode hold      # 持续按住 A（Ctrl+C 退出，可观察 fail-safe）
 ```
-
-服务端会打印解出的按键 / 摇杆 / 扳机 / 十字键，停发 300ms 后自动归零。
-**注意**：当前后端是 `ConsoleBackend`，只在控制台打印——要让游戏真的收到输入，还需要接入 ViGEmBus 后端（P1 未完成项）。
 
 ### 协议改动流程
 

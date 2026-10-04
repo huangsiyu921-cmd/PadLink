@@ -146,7 +146,15 @@ private fun PadLinkApp() {
     }
 
     if (showExport) {
-        ExportDialog(layout = layout, onDismiss = { showExport = false })
+        ExportDialog(
+            layout = layout,
+            onDismiss = { showExport = false },
+            onImport = { imported ->
+                layout = imported
+                store.save(imported)
+                showExport = false
+            },
+        )
     }
 
     if (showResetConfirm) {

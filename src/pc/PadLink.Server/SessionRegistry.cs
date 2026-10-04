@@ -5,7 +5,16 @@ using PadLink.Core.Protocol;
 namespace PadLink.Server;
 
 /// <summary>管理手机会话。</summary>
-public sealed class SessionRegistry(IVirtualControllerBackend backend) : IDisposable
+/// <param name="preferred">
+/// PC 端指定的手柄类型。传 null 就跟随手机在帧里声明的类型。
+/// <para>
+/// 之所以让 PC 端有话语权：虚拟手柄最终是"这台电脑上的一个设备"，
+/// 想让它以 PS4 还是 Xbox 身份出现，取决于你在玩的游戏和 Steam 设置，跟手机没关系。
+/// </para>
+/// </param>
+public sealed class SessionRegistry(
+    IVirtualControllerBackend backend,
+    ControllerType? preferred = null) : IDisposable
 {
     /// <summary>
     /// 按 <b>player</b> 索引，<b>不是</b>按来源地址。
@@ -32,14 +41,19 @@ public sealed class SessionRegistry(IVirtualControllerBackend backend) : IDispos
             return existing;
         }
 
-        if (!backend.Supports(frame.Controller))
-            throw new VirtualControllerException($"后端 {backend.Name} 不支持 {frame.Controller.ToWireName()}");
+        // PC 端指定了类型就用它；后端做不出来再退回手机声明的。
+        var requested = preferred is { } forced && backend.Supports(forced) ? forced : frame.Controller;
 
-        var controller = backend.Connect(frame.Player, frame.Controller);
+        if (!backend.Supports(requested))
+            throw new VirtualControllerException($"后端 {backend.Name} 不支持 {requested.ToWireName()}");
+
+        var controller = backend.Connect(frame.Player, requested);
         var session = new PadSession(remote, controller);
         _sessions[frame.Player] = session;
 
-        Console.WriteLine($"  新建会话 P{frame.Player} {frame.Controller.ToWireName()} ← {remote}（后端 {backend.Name}）");
+        var source = preferred is { } p && requested == p ? "PC 指定" : "手机声明";
+        Console.WriteLine(
+            $"  新建会话 P{frame.Player} {requested.ToWireName()}（{source}）← {remote}（后端 {backend.Name}）");
         return session;
     }
 
