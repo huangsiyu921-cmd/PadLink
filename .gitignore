@@ -13,6 +13,10 @@ local.properties
 *.keystore
 captures/
 
+# Android 签名：本机专有，不入库（keystore 本体在仓库外 D:\Keys\PadLink）
+keystore.properties
+*.jks
+
 # IDE
 .idea/
 *.iml
@@ -27,6 +31,9 @@ __pycache__/
 
 # 本地调研/参考源码，不入库
 research/
+
+# 本地构建产物
+dist/
 
 # 交接文档：只给本地接手的人看，不入库
 HANDOFF.md

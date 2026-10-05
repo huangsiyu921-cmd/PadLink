@@ -1,101 +1,143 @@
 # PadLink
 
-把 Android 手机变成 PC 的虚拟手柄：手机端渲染并采集触摸输入，经 WiFi / ADB 送到 PC，PC 端模拟出系统认得的 Xbox 360 / PS4 手柄。
+把 Android 手机变成 PC 的虚拟手柄。手机端渲染手柄界面并采集触摸输入，经 **WiFi** 或 **USB（ADB）** 送到 PC，PC 端造出一个系统认得的真手柄（Xbox 360 / PlayStation 4）。
 
-- **PC 端**：C# / .NET 10，仅 Windows
-- **移动端**：Kotlin + Android Studio，Material 3（手柄本体自绘 Canvas）
-- **虚拟手柄**：ViGEmBus，可在 **Xbox 360 / PlayStation 4** 之间切换（PC 端说了算）
-- **传输**：WiFi (UDP) / ADB (TCP + `adb reverse`)
-- **布局**：控件位置/大小可拖动 + 双指缩放，可导出成文件；扳机（滑动条 / 按钮）与十字键（8 方向 / 三角分键）各有两种样式
-- **状态**：ADB 模式端到端跑通（真机验收）
+**动机**：家里的 WiFi 不稳，想走 USB 直连，但现成的同类软件基本只有 WiFi 模式。所以 **ADB（USB）是主线**，WiFi 是补充。
+
+| 端 | 技术 |
+| --- | --- |
+| PC 端 | C# / .NET 10，WinForms，仅 Windows |
+| 手机端 | Kotlin + Jetpack Compose（Material 3），手柄本体自绘 Canvas |
+| 虚拟手柄 | ViGEmBus 驱动，可在 **Xbox 360 / PS4** 之间切换 |
+| 传输 | WiFi = UDP 数据 + TCP 控制；ADB = TCP + `adb reverse` |
+
+## 特性
+
+- **ADB 模式全链路跑通**（真机验证过）：插上 USB → PC 自动 `adb reverse` → 手机自动连上 → PC 建出真手柄。
+- **手柄类型可切换**：Xbox 360 / PS4（PC 端说了算，切换即重建虚拟手柄）。DS4 身份在 Steam 里认得出。
+- **布局系统**：控件可拖动挪位、双指缩放、导出成文件、从文件导入；十字键有「8 方向 / 三角分键」两种样式，扳机有「滑动条 / 按钮」两种样式。
+- **手机界面**：双摇杆 / 十字键 / ABXY / LT·RT / LB·RB / Back·Start / L3·R3 / Guide，Material 3 深色。
+- **PC 界面**：深色 WinForms，托盘常驻，设置弹窗里启停服务、建 ADB 隧道、切换手柄类型。
+- **两端协议互验**：共用 `protocol/testvectors/frames.json`，C# 与 Kotlin 各跑一遍。
+- **fail-safe**：手机关掉或断线后 PC 端自动归零输入，不会卡住按键。
 
 ## 目录
 
 ```
-<项目根>\
-  working tree\          ← 源码，本 git 仓库
-    protocol\              两端唯一契约 + 测试向量
-    tools\                 向量生成器 / 假手机 / adb 隧道探针 / 卸载脚本 / 图标生成
-    src\pc\                C# / .NET 10 解决方案
-    src\android\           Kotlin / Gradle 工程
-    docs\                  企划审查 / 技术路线 / 路线图
-    build.ps1              编译 PC 端并发布到 ..\app
-    research\              参考项目源码（.gitignore 忽略）
-
-  app\                   ← PC 端编译产物，不在 git 里
-    PadLink.Gui.exe        双击就用
-    uninstall.bat          卸载：清进程 / adb 隧道 / 日志 / 程序目录
+protocol/               两端唯一契约 protocol.md + 测试向量
+tools/                  向量生成器 / 假手机 / adb 隧道探针 / 卸载脚本 / 图标生成
+src/pc/                 C# / .NET 10 解决方案
+src/android/            Kotlin / Gradle 工程
+docs/                   企划审查 / 技术路线 / 路线图 / 本地开发笔记
+build.ps1               编译 PC 端并发布
 ```
 
-`src\pc` 里各项目：
+`src/pc` 里的项目：
 
 | 项目 | 作用 |
-|---|---|
+| --- | --- |
 | `PadLink.Core` | 协议编解码、输入模型、后端抽象、fail-safe |
 | `PadLink.Backends.ViGEm` | ViGEmBus 后端（Xbox 360 / DS4） |
 | `PadLink.Server` | UDP/TCP 接收 + 会话管理 + `PadLinkHost`（CLI） |
 | `PadLink.Gui` | WinForms 管理界面 |
 | `PadLink.Core.Tests` | 41 个测试，含协议向量一致性 |
 
+## 运行要求
+
+- **PC 端**：Windows 10 / 11 x64，[.NET 10 运行时](https://dotnet.microsoft.com/download/dotnet/10.0)，以及 **ViGEmBus 驱动** —— 从 [ViGEmBus releases](https://github.com/nefarius/ViGEmBus/releases) 装 v1.22.0（该仓库已于 2023-11-02 归档停更，但仍可用）。
+- **手机端**：Android 8.0（API 26）以上。
+- **从源码构建 Android**：JDK **17**（JDK 25 会破坏 Kotlin 编译器）+ Android SDK 35，SDK 路径写在 `src/android/local.properties`（不入库）。
+
 ## 怎么跑
 
-### 直接用
-
-双击 `app\PadLink.Gui.exe`。界面里点「设置」能启动/停止服务、建 ADB 隧道、切换手柄类型。
-
-卸载：跑 `app\uninstall.bat`（或 `working tree\tools\uninstall.bat`）——
-清掉进程、adb 隧道、日志和程序目录。**ViGEmBus 驱动故意不动**（DS4Windows 等软件也在用它）。
-
-### 改完代码重新发布
+### PC 端
 
 ```powershell
-cd working tree
+cd src\pc
+dotnet test                                        # 协议 + fail-safe 测试
+dotnet run --project PadLink.Gui                   # 图形界面
+```
+
+发布成可直接双击的目录（默认输出到本仓库上一级的 `app\`，用 `-Output` 改）：
+
+```powershell
 .\build.ps1
+.\build.ps1 -Output dist                           # 输出到仓库内 dist\
 ```
 
-### 开发调试
+命令行方式：
 
 ```powershell
-cd working tree\src\pc
-dotnet test                                                  # 41 个协议测试
-dotnet run --project PadLink.Server                          # 命令行起服务
-dotnet run --project PadLink.Server -- --controller ds4       # 以 PS4 身份出现（Steam 认得出）
-dotnet run --project PadLink.Server -- --adb                  # 起服务并自动建 adb reverse 隧道
-dotnet run --project PadLink.Server -- --verify               # 自检：建手柄 → XInput 回读比对
-dotnet run --project PadLink.Server -- --probe                # 只读 XInput，看系统里有没有输入
+cd src\pc
+dotnet run --project PadLink.Server                # 起服务
+dotnet run --project PadLink.Server -- --controller ds4    # 以 PS4 身份出现
+dotnet run --project PadLink.Server -- --adb               # 起服务并自动建 adb reverse 隧道
+dotnet run --project PadLink.Server -- --verify            # 自检：建手柄 → XInput 回读比对
+dotnet run --project PadLink.Server -- --probe             # 只读 XInput，看系统里有没有输入
 ```
 
-另开一个终端：
+### 手机端
 
 ```powershell
-cd working tree
+cd src\android
+.\gradlew.bat :core:test :app:testDebugUnitTest    # 协议向量 + 布局测试
+.\gradlew.bat :app:assembleDebug                   # 产物在 app\build\outputs\apk\debug\
+.\gradlew.bat :app:assembleRelease                 # 正式包（需要签名配置，见下）
+```
+
+在 Android Studio 里直接跑也行：打开 `src/android`。
+
+**签名**：`src/android/keystore.properties`（不入库）里写 keystore 路径与密码，`app/build.gradle.kts` 会自动读它给 `release` 挂签名。没有这个文件时 release 退回 debug 签名 —— 能编译，但不能正式发布。
+
+```properties
+storeFile=D:/path/to/padlink.jks
+storePassword=...
+keyAlias=...
+keyPassword=...
+```
+
+### 没有手机也能验证 PC 端
+
+```powershell
 python tools/fake_pad.py                  # 5 秒演示序列（UDP / WiFi 模式）
 python tools/fake_pad.py --transport tcp  # 走 TCP（ADB 模式，会先握手再发帧）
 python tools/fake_pad.py --mode discover  # 广播探测 PC
 python tools/fake_pad.py --mode hold      # 持续按住 A（Ctrl+C 退出，可观察 fail-safe）
 ```
 
-### 协议改动流程
+## 协议
 
-`protocol/protocol.md` 是唯一契约。改协议必须走完这三步：
+`protocol/protocol.md` 是两端唯一的契约。核心设计：
+
+- 输入用 **UDP + 固定节拍的全量状态快照**（不是增量事件），丢包无害。
+- 一切输入用**物理语义**（向上为正、向右为正），与具体后端解耦；Y 轴取反之类的硬件怪癖归 PC 端 Mapper。
+- 手柄类型由 **PC 端**决定，手机帧里的 `controller` 字段会被覆盖。
+
+改协议必须走完这三步，缺一步就会两端不一致：
 
 ```powershell
-python tools/gen_testvectors.py              # 重新生成向量
-cd src\pc;      dotnet test                  # C# 端必须绿
-cd src\android; .\gradlew.bat :core:test     # Kotlin 端必须绿
+python tools/gen_testvectors.py                    # 重新生成向量
+cd src\pc;      dotnet test                        # C# 端必须绿
+cd src\android; .\gradlew.bat :core:test           # Kotlin 端必须绿
 ```
 
-Android 端构建需要 **JDK 17**（JDK 25 会破坏 Kotlin 编译器）；SDK 路径写在 `src/android/local.properties`（不入库）。
+**硬约束**：`adb forward / reverse` 只转发 TCP，不支持 UDP。所以 ADB 模式的数据通道必须是 TCP，且方向是 `adb reverse`（设备端口 → 主机端口），PC 做 server、手机做 client。
 
-## 三份必读文档
+## 状态
 
-1. `docs/01-企划审查.md` — 原始企划的事实核查（ViGEmBus 已停更、ADB 路径 B 不成立、许可约束）
-2. `docs/02-技术路线.md` — 架构、协议、后端选型的完整理由
-3. `docs/03-路线图与待决策.md` — 决策记录 + P0–P5 分期与验收标准
+已经能用的都真机验证过：ADB 全链路、手柄类型切换、PC 界面、手机界面、布局系统、协议互验。
 
-## 四条核心结论
+还没做：WiFi 模式的真机验证、震动回传（协议帧已定义，两端都没实现）、`adb pair` 无线调试引导、主题动态取色。
 
-1. 原企划的技术基石 **ViGEmBus 已于 2023-11-02 归档停更**（商标纠纷），冻结在 v1.22.0。仍在工作；已决定先用它起步、在抽象层预留 VIIPER。
-2. **ADB 是这个项目的立项理由**（"屋里网不好，想用 ADB 但没有"，而现有软件 EMotion 只有 WiFi），且 `adb forward/reverse` **只转发 TCP、不支持 UDP** —— 所以 ADB 模式的数据通道必须是 TCP。隧道已实测可用（`tools/adb_tcp_probe.py`）。
-3. 原企划的 **"ADB 路径 B"（手机连自己的 adbd + `input` 命令）在本项目里不成立**——`input` 造不出摇杆轴和扳机。ADB 的正确定位是"手机 ↔ PC 的 USB 数据传输通道"，方向是 `adb reverse`。
-4. **VIIPER、Joy2DroidX、Controlloid 都是 GPL-3.0**。接入 VIIPER 必须走"独立进程 + TCP API"，不能链接它的库，否则 PadLink 也得 GPL。
+## 文档
+
+1. [`docs/01-企划审查.md`](docs/01-企划审查.md) — 事实核查：ViGEmBus 已停更、ADB 路径取舍、许可约束
+2. [`docs/02-技术路线.md`](docs/02-技术路线.md) — 架构、协议、后端选型的完整理由
+3. [`docs/03-路线图与待决策.md`](docs/03-路线图与待决策.md) — 决策记录与 P0–P5 分期
+4. [`docs/04-本地开发笔记.md`](docs/04-本地开发笔记.md) — 本机目录布局、踩过的坑
+
+## 许可
+
+[GNU General Public License v3.0](LICENSE)。
+
+注意：生态里的同类项目（VIIPER、Joy2DroidX、Controlloid）都是 GPL-3.0。将来若要接入 VIIPER，必须走「独立进程 + 它的 TCP API」，不能链接它的库。
