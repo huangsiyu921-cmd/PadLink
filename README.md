@@ -42,9 +42,23 @@ build.ps1               编译 PC 端并发布
 | `PadLink.Gui` | WinForms 管理界面 |
 | `PadLink.Core.Tests` | 41 个测试，含协议向量一致性 |
 
+## 下载
+
+[**Releases**](https://github.com/huangsiyu921-cmd/PadLink/releases) 里有预编译包：
+
+| 文件 | 说明 |
+| --- | --- |
+| `PadLink-x.y.z.apk` | Android 端，装到手机即可 |
+| `PadLink-x.y.z-win-x64.zip` | PC 端，解压后双击 `PadLink.Gui.exe`；不打包 .NET 运行时，依赖见下 |
+
+不想下载就按下面从源码构建。
+
 ## 运行要求
 
-- **PC 端**：Windows 10 / 11 x64，[.NET 10 运行时](https://dotnet.microsoft.com/download/dotnet/10.0)，以及 **ViGEmBus 驱动** —— 从 [ViGEmBus releases](https://github.com/nefarius/ViGEmBus/releases) 装 v1.22.0（该仓库已于 2023-11-02 归档停更，但仍可用）。
+- **PC 端**：Windows 10 / 11 x64
+  - [.NET 10 **桌面**运行时（x64）](https://dotnet.microsoft.com/download/dotnet/10.0/runtime) —— 图形界面是 WinForms，要的是 `Microsoft.WindowsDesktop.App`，不是普通的 .NET Runtime
+  - **ViGEmBus 驱动 v1.22.0** —— [下载](https://github.com/nefarius/ViGEmBus/releases)。造虚拟手柄的内核驱动，没有它建不出手柄；该仓库已于 2023-11-02 归档停更，v1.22.0 是最后版本，仍可用
+  - **adb** —— 只有 USB 模式需要，把 [platform-tools](https://developer.android.com/tools/releases/platform-tools) 加进 `PATH`
 - **手机端**：Android 8.0（API 26）以上。
 - **从源码构建 Android**：JDK **17**（JDK 25 会破坏 Kotlin 编译器）+ Android SDK 35，SDK 路径写在 `src/android/local.properties`（不入库）。
 
