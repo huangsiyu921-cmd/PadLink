@@ -36,6 +36,9 @@ class TiltSource(context: Context) : SensorEventListener {
     /** 每解算出一个新值回调一次。调用方负责写进输入状态。 */
     var onTilt: ((Float) -> Unit)? = null
 
+    /** 零点定了（首次自动定，或用户点了重定）回调一次，调用方负责存下来。 */
+    var onZeroChanged: ((Float) -> Unit)? = null
+
     /** 手感参数。改完立刻生效，不用重新定零点。 */
     var settings: TiltSettings
         get() = solver.settings
@@ -54,13 +57,25 @@ class TiltSource(context: Context) : SensorEventListener {
     @Volatile
     private var listening = false
 
-    /** 开始读。首次采样会顺手把零点定下来，用户不用再手动校准一次。 */
-    fun start() {
+    /**
+     * 开始读。
+     *
+     * [restoreZeroRad] 是上次存下来的零点：给了就直接用，接着上次接着玩；
+     * 没给（第一次开）就等第一帧自动定。
+     */
+    fun start(restoreZeroRad: Float?) {
         val target = sensor ?: return
         if (listening) return
 
-        awaitingRecenter = true
         solver.reset()
+
+        if (restoreZeroRad != null && restoreZeroRad.isFinite()) {
+            solver.recenter(restoreZeroRad)
+            awaitingRecenter = false
+        } else {
+            awaitingRecenter = true
+        }
+
         sensorManager.registerListener(this, target, SensorManager.SENSOR_DELAY_GAME)
         listening = true
     }
@@ -81,10 +96,16 @@ class TiltSource(context: Context) : SensorEventListener {
 
         val roll = rollRadians(event.values) ?: return
 
+        // 个别机型上电时会先吐一帧全零，归一化出来就是 NaN。必须在这儿拦掉：
+        // NaN 顺着走会变成轴值，而 Float.roundToInt() 对 NaN 是抛异常——那就是整个 App 崩。
+        if (!roll.isFinite()) return
+
         if (awaitingRecenter) {
             solver.recenter(roll)
             awaitingRecenter = false
+            onZeroChanged?.invoke(roll)
         }
+
         onTilt?.invoke(solver.update(roll))
     }
 

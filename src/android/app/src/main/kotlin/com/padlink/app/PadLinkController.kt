@@ -4,8 +4,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.padlink.app.input.PadInputState
-import com.padlink.app.input.TiltSettingsStore
 import com.padlink.app.input.TiltSource
+import com.padlink.app.input.TiltStore
 import com.padlink.app.transport.FramePump
 import com.padlink.app.transport.PumpStats
 import com.padlink.app.transport.TcpTransport
@@ -35,7 +35,7 @@ sealed interface LinkStatus {
 class PadLinkController(
     private val scope: CoroutineScope,
     private val tilt: TiltSource,
-    private val tiltStore: TiltSettingsStore,
+    private val tiltStore: TiltStore,
 ) {
 
     val input = PadInputState()
@@ -45,7 +45,7 @@ class PadLinkController(
         private set
 
     /** 重力转向的手感参数。拖滑杆时实时生效，松手才落盘。 */
-    var tiltSettings by mutableStateOf(tiltStore.load())
+    var tiltSettings by mutableStateOf(tiltStore.loadSettings())
         private set
 
     val tiltAvailable: Boolean get() = tilt.isAvailable
@@ -56,6 +56,11 @@ class PadLinkController(
             input.setTiltX(value)
             push()
         }
+        tilt.onZeroChanged = { rad -> tiltStore.saveZeroRad(rad) }
+
+        // 上次是开着的就接着开、零点也用上次定的。不然 Activity 被系统回收重建一次，
+        // 用户回来看到的就是"重力自己退出了"。
+        if (tiltStore.loadEnabled()) enableTilt(true)
     }
 
     var mode by mutableStateOf(TransportMode.ADB)
@@ -126,7 +131,7 @@ class PadLinkController(
     }
 
     /**
-     * 开关重力转向。打开时顺手以当前姿态定零点，用户不用再单独校准一次。
+     * 开关重力转向。打开时用上次存的零点接着玩；第一次开才以当前姿态现定一个。
      *
      * 没有陀螺仪的机器上永远打不开——那种情况界面那边的按钮应该是灰的。
      */
@@ -136,9 +141,10 @@ class PadLinkController(
 
         tiltEnabled = next
         input.tiltOwnsLeftX = next
+        tiltStore.saveEnabled(next)
 
         if (next) {
-            tilt.start()
+            tilt.start(tiltStore.loadZeroRad())
         } else {
             tilt.stop()
             input.setTiltX(0f)   // 别把摇杆留在最后那个位置上
@@ -158,13 +164,18 @@ class PadLinkController(
     fun applyTiltSettings(settings: TiltSettings, persist: Boolean) {
         tiltSettings = settings
         tilt.settings = settings
-        if (persist) tiltStore.save(settings)
+        if (persist) tiltStore.saveSettings(settings)
     }
 
-    /** 界面要走了：收连接、关传感器。 */
+    /**
+     * 界面要走了：收连接、停传感器。
+     *
+     * **不动开关状态、也不写盘**——Activity 重建后还要接着用。在这儿写个 false 下去，
+     * 等于系统每回收一次界面，用户的重力就"自己退一下"。真要关走 [enableTilt]。
+     */
     fun release() {
         disconnect()
-        enableTilt(false)
+        tilt.stop()
     }
 
     companion object {

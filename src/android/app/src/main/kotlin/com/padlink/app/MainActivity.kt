@@ -22,8 +22,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.padlink.app.input.TiltSettingsStore
 import com.padlink.app.input.TiltSource
+import com.padlink.app.input.TiltStore
 import com.padlink.app.layout.LayoutStore
 import com.padlink.app.layout.PadLayout
 import com.padlink.app.ui.AppSettingsDialog
@@ -61,7 +61,7 @@ class MainActivity : ComponentActivity() {
 private fun PadLinkApp() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val controller = remember { PadLinkController(scope, TiltSource(context), TiltSettingsStore(context)) }
+    val controller = remember { PadLinkController(scope, TiltSource(context), TiltStore(context)) }
     val store = remember { LayoutStore(context) }
 
     var layout by remember { mutableStateOf(store.load()) }
