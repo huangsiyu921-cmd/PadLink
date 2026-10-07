@@ -70,28 +70,9 @@ private fun RowScope.IdleBar(controller: PadLinkController, onOpenSettings: () -
     Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
         TextButton(onClick = onOpenSettings) { Text("设置", fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
     }
-    Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
-        TiltToggle(controller)
-    }
-}
-
-/** 重力转向的开关。开着的时候左摇杆的 X 轴交给手机姿态，触摸让位。 */
-@Composable
-private fun TiltToggle(controller: PadLinkController) {
-    TextButton(
-        onClick = { controller.enableTilt(!controller.tiltEnabled) },
-        enabled = controller.tiltAvailable,
-    ) {
-        Text(
-            text = "重力",
-            color = when {
-                !controller.tiltAvailable -> Color(0xFF5A5A5A)
-                controller.tiltEnabled -> Color(0xFF81C784)
-                else -> Color(0xFF9E9E9E)
-            },
-            fontSize = 14.sp,
-        )
-    }
+    // 右边留空。原来这里放重力开关，但手柄画布是画在顶栏之上的，
+    // A 键正好压在这一块，按钮既看不清也点不着。开关现在只在设置里。
+    Box(Modifier.weight(1f))
 }
 
 @Composable
