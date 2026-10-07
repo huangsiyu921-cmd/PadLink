@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.padlink.app.input.TiltSource
 import com.padlink.app.layout.LayoutStore
 import com.padlink.app.layout.PadLayout
 import com.padlink.app.ui.AppSettingsDialog
@@ -59,7 +60,7 @@ class MainActivity : ComponentActivity() {
 private fun PadLinkApp() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val controller = remember { PadLinkController(scope) }
+    val controller = remember { PadLinkController(scope, TiltSource(context)) }
     val store = remember { LayoutStore(context) }
 
     var layout by remember { mutableStateOf(store.load()) }
@@ -171,9 +172,9 @@ private fun PadLinkApp() {
         )
     }
 
-    // 退出界面就把连接收掉，别让发送循环在后台空转。
+    // 退出界面就把连接和传感器都收掉，别让发送循环和传感器在后台空转。
     DisposableEffect(Unit) {
-        onDispose { controller.disconnect() }
+        onDispose { controller.release() }
     }
 
     // ADB 模式的地址是固定的 127.0.0.1，插着线打开就该能用，不必再点一下「连接」。

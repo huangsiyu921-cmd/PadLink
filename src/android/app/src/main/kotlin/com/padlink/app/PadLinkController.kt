@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.padlink.app.input.PadInputState
+import com.padlink.app.input.TiltSource
 import com.padlink.app.transport.FramePump
 import com.padlink.app.transport.PumpStats
 import com.padlink.app.transport.TcpTransport
@@ -26,10 +27,28 @@ sealed interface LinkStatus {
 
 /**
  * 连接与发送的总控。界面只管改 [input] 然后调 [push]，其余（节拍、编码、传输）都在这下面。
+ *
+ * 重力转向也在这层：它只是 [input] 的又一个写入者，出了这里发出去的还是普通输入帧。
  */
-class PadLinkController(private val scope: CoroutineScope) {
+class PadLinkController(
+    private val scope: CoroutineScope,
+    private val tilt: TiltSource,
+) {
 
     val input = PadInputState()
+
+    /** 重力转向开着时，左摇杆的 X 轴由手机姿态驱动，触摸让位。 */
+    var tiltEnabled by mutableStateOf(false)
+        private set
+
+    val tiltAvailable: Boolean get() = tilt.isAvailable
+
+    init {
+        tilt.onTilt = { value ->
+            input.setTiltX(value)
+            push()
+        }
+    }
 
     var mode by mutableStateOf(TransportMode.ADB)
     var host by mutableStateOf(DEFAULT_WIFI_HOST)
@@ -96,6 +115,38 @@ class PadLinkController(private val scope: CoroutineScope) {
     fun setButton(bit: Int, pressed: Boolean) {
         input.buttons = if (pressed) input.buttons or bit else input.buttons and bit.inv()
         push()
+    }
+
+    /**
+     * 开关重力转向。打开时顺手以当前姿态定零点，用户不用再单独校准一次。
+     *
+     * 没有陀螺仪的机器上永远打不开——那种情况界面那边的按钮应该是灰的。
+     */
+    fun enableTilt(enabled: Boolean) {
+        val next = enabled && tilt.isAvailable
+        if (next == tiltEnabled) return
+
+        tiltEnabled = next
+        input.tiltOwnsLeftX = next
+
+        if (next) {
+            tilt.start()
+        } else {
+            tilt.stop()
+            input.setTiltX(0f)   // 别把摇杆留在最后那个位置上
+        }
+        push()
+    }
+
+    /** 以当前姿态为零点。玩到一半换了姿势（躺下、翘腿）之后调一次。 */
+    fun recenterTilt() {
+        if (tiltEnabled) tilt.recenter()
+    }
+
+    /** 界面要走了：收连接、关传感器。 */
+    fun release() {
+        disconnect()
+        enableTilt(false)
     }
 
     companion object {

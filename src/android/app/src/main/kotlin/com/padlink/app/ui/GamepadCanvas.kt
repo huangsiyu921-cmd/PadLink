@@ -245,8 +245,7 @@ private fun ElementContent(element: PadElement, layout: PadLayout, controller: P
 
     when (element.kind) {
         PadElementKind.LEFT_STICK -> StickPad(Modifier.fillMaxSize()) { x, y ->
-            input.leftX = x
-            input.leftY = y
+            input.setLeftStick(x, y)
             controller.push()
         }
 

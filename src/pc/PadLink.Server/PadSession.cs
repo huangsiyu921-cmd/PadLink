@@ -33,6 +33,16 @@ public sealed class PadSession(IPEndPoint remote, IVirtualController controller)
 
     public bool Stale => Guard.IsStale;
 
+    /// <summary>
+    /// 最近一次提交给虚拟手柄的状态——也就是这台手柄正在"输出"的东西。
+    /// 界面的手柄输出面板读它。
+    /// <para>
+    /// 网络线程写、界面线程读，而结构体不是原子的：偶尔可能读到"新的一半 + 旧的一半"。
+    /// 只用于显示，下一帧就正过来了，不值得为它上锁。
+    /// </para>
+    /// </summary>
+    public GamepadState LastState { get; private set; } = GamepadState.Neutral;
+
     public void OnFrame(in InputFrame frame)
     {
         if (_hasSequence)
@@ -51,7 +61,10 @@ public sealed class PadSession(IPEndPoint remote, IVirtualController controller)
             Console.WriteLine($"  [P{Controller.Player}] 连接恢复，重新接管输入");
 
         Guard.OnFrame();
-        Controller.Submit(GamepadState.FromFrame(frame));
+
+        var state = GamepadState.FromFrame(frame);
+        LastState = state;
+        Controller.Submit(state);
     }
 
     /// <summary>周期调用。返回 true 表示本次刚进入失效状态并已归零。</summary>
@@ -59,6 +72,7 @@ public sealed class PadSession(IPEndPoint remote, IVirtualController controller)
     {
         if (!Guard.Poll()) return false;
 
+        LastState = GamepadState.Neutral;
         Controller.Submit(GamepadState.Neutral);
         Console.WriteLine($"  [P{Controller.Player}] 超过 {ProtocolConstants.FailSafeTimeout.TotalMilliseconds:F0}ms 未收到数据，已归零输入");
         return true;

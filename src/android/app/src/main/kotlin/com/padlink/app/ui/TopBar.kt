@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.padlink.app.LinkStatus
@@ -61,14 +62,36 @@ fun TopBar(
 private fun RowScope.IdleBar(controller: PadLinkController, onOpenSettings: () -> Unit) {
     val (text, color) = statusOf(controller)
 
-    // 三等分：状态在左，齿轮严格居中。
+    // 三等分：状态在左，齿轮严格居中，重力开关在右。
     Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-        Text(text = text, color = color, fontSize = 13.sp, maxLines = 1)
+        // 连不上时 message 是原始的异常文本，很长；不截断会画到右边把重力开关盖住。
+        Text(text = text, color = color, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
     Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
         TextButton(onClick = onOpenSettings) { Text("设置", fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
     }
-    Box(Modifier.weight(1f))
+    Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+        TiltToggle(controller)
+    }
+}
+
+/** 重力转向的开关。开着的时候左摇杆的 X 轴交给手机姿态，触摸让位。 */
+@Composable
+private fun TiltToggle(controller: PadLinkController) {
+    TextButton(
+        onClick = { controller.enableTilt(!controller.tiltEnabled) },
+        enabled = controller.tiltAvailable,
+    ) {
+        Text(
+            text = "重力",
+            color = when {
+                !controller.tiltAvailable -> Color(0xFF5A5A5A)
+                controller.tiltEnabled -> Color(0xFF81C784)
+                else -> Color(0xFF9E9E9E)
+            },
+            fontSize = 14.sp,
+        )
+    }
 }
 
 @Composable

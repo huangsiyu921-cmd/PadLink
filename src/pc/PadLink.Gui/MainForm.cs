@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using PadLink.Backends.ViGEm;
+using PadLink.Core;
 using PadLink.Core.Protocol;
 using PadLink.Server;
 
@@ -14,10 +15,15 @@ public sealed class MainForm : Form
 {
     private readonly Label _statusLabel = new();
     private readonly Button _settingsButton = new();
+    private readonly Button _logButton = new();
+    private readonly Button _outputButton = new();
     private readonly DataGridView _sessionGrid = new();
     private readonly TextBox _logBox = new();
     private readonly System.Windows.Forms.Timer _refreshTimer = new() { Interval = 500 };
     private readonly NotifyIcon _trayIcon = new();
+
+    private LogWindow _logWindow = null!;
+    private PadOutputWindow _outputWindow = null!;
 
     private PadLinkHost? _host;
     private readonly string _localAddress;
@@ -45,11 +51,20 @@ public sealed class MainForm : Form
 
         BuildLayout();
 
-        // 服务端那层照旧 Console.WriteLine，这里把它接到日志框上，省得改一遍代码。
-        // 同时落一份到文件——界面万一出问题，还能事后翻日志。
+        // 服务端那层照旧 Console.WriteLine，这里把它接到三个地方，服务端一行都不用改：
+        // 主界面底下那条（随手瞄一眼）、独立日志窗口（翻历史、复制）、日志文件（事后查）。
+        _logWindow = new LogWindow(Icon) { Owner = this };
+        _outputWindow = new PadOutputWindow(ReadState, Icon) { Owner = this };
+
         var fileLog = OpenLogFile();
-        Console.SetOut(new TeeTextWriter(new TextBoxWriter(_logBox), fileLog));
-        Console.SetError(new TeeTextWriter(new TextBoxWriter(_logBox), fileLog));
+        var console = new TeeTextWriter(
+            new TeeTextWriter(
+                new TextBoxWriter(_logBox),
+                new TextBoxWriter(_logWindow.Box, () => _logWindow.FollowTail)),
+            fileLog);
+
+        Console.SetOut(console);
+        Console.SetError(console);
 
         // 缩到托盘后没有主窗口，出了事很难发现——把未处理异常也记进日志。
         Application.ThreadException += (_, e) => Console.WriteLine($"未处理的界面异常：{e.Exception}");
@@ -101,8 +116,29 @@ public sealed class MainForm : Form
         _settingsButton.UseVisualStyleBackColor = false;
         _settingsButton.Click += (_, _) => OpenSettings();
 
+        // 右边两个入口：程序日志、手柄输出。都是独立窗口，主界面留给会话表。
+        StyleBarButton(_logButton, "日志");
+        _logButton.Click += (_, _) => _logWindow.ShowLog();
+
+        StyleBarButton(_outputButton, "输出");
+        _outputButton.Click += (_, _) => _outputWindow.ShowOutput();
+
+        var actions = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Right,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Margin = Padding.Empty,
+            BackColor = PadTheme.Background,
+        };
+        actions.Controls.Add(_logButton);
+        actions.Controls.Add(_outputButton);
+
         top.Controls.Add(_statusLabel, 0, 0);
         top.Controls.Add(_settingsButton, 1, 0);
+        top.Controls.Add(actions, 2, 0);
 
         // 日志在下：深色等宽，一眼能看出归零 / 回收这些事件。
         _logBox.Dock = DockStyle.Bottom;
@@ -125,6 +161,24 @@ public sealed class MainForm : Form
 
         ResumeLayout();
     }
+
+    /// <summary>顶部条上的小按钮：跟「设置」一个样式，只是窄一点。</summary>
+    private static void StyleBarButton(Button button, string text)
+    {
+        button.Text = text;
+        button.Size = new Size(78, 32);
+        button.FlatStyle = FlatStyle.Flat;
+        button.FlatAppearance.BorderSize = 0;
+        button.FlatAppearance.MouseOverBackColor = PadTheme.SurfaceHover;
+        button.FlatAppearance.MouseDownBackColor = PadTheme.Accent;
+        button.BackColor = PadTheme.Surface;
+        button.ForeColor = PadTheme.Text;
+        button.Cursor = Cursors.Hand;
+        button.UseVisualStyleBackColor = false;
+    }
+
+    /// <summary>「手柄输出」窗口要读的当前状态。没有会话就是 null。</summary>
+    private GamepadState? ReadState() => _host?.Sessions.FirstOrDefault()?.LastState;
 
     private void ConfigureGrid()
     {
@@ -268,6 +322,8 @@ public sealed class MainForm : Form
             _trayIcon.Visible = false;      // 不先隐藏的话托盘里会留下幽灵图标
             _trayIcon.Dispose();
             _refreshTimer.Dispose();
+            _logWindow?.Dispose();
+            _outputWindow?.Dispose();
         }
 
         base.Dispose(disposing);

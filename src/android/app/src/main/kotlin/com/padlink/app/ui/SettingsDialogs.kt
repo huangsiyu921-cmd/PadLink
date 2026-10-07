@@ -213,6 +213,28 @@ fun AppSettingsDialog(
                     )
                 }
 
+                SectionTitle("重力转向")
+                if (controller.tiltAvailable) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = controller.tiltEnabled,
+                            onClick = { controller.enableTilt(true) },
+                            label = { Text("开", fontSize = 13.sp) },
+                        )
+                        FilterChip(
+                            selected = !controller.tiltEnabled,
+                            onClick = { controller.enableTilt(false) },
+                            label = { Text("关", fontSize = 13.sp) },
+                        )
+                    }
+                    TextButton(
+                        onClick = { controller.recenterTilt() },
+                        enabled = controller.tiltEnabled,
+                    ) { Text("重定中心", fontSize = 13.sp) }
+                } else {
+                    Text("这台机器没有陀螺仪", color = HintColor, fontSize = 12.sp)
+                }
+
                 SectionTitle("布局")
                 Button(onClick = { onEnterLayoutEdit(draft) }) { Text("调整布局", fontSize = 13.sp) }
 
