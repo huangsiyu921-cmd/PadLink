@@ -2,6 +2,7 @@ package com.padlink.core
 
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.pow
 
 /**
  * 重力转向的解算：把"屏幕坐标下的左右倾角"换算成 -1..1 的轴值。
@@ -11,12 +12,13 @@ import kotlin.math.abs
  *
  * 用法：先 [recenter] 定零点，再反复 [update]。零点必须由用户当前姿态决定——
  * 坐着玩和躺着玩，手机的物理倾角可以完全一样，但玩家要的是"相对自己舒服的姿势"。
+ *
+ * 手感参数在 [settings] 上，随时可改，改完不用重新定零点。
  */
-class TiltSolver(
-    private val maxAngleDeg: Float = DEFAULT_MAX_ANGLE_DEG,
-    private val deadZoneDeg: Float = DEFAULT_DEAD_ZONE_DEG,
-    private val smoothing: Float = DEFAULT_SMOOTHING,
-) {
+class TiltSolver(settings: TiltSettings = TiltSettings()) {
+
+    var settings: TiltSettings = settings
+
     private var zeroRad = 0f
     private var output = 0f
 
@@ -38,8 +40,9 @@ class TiltSolver(
      * 平滑放在最后一步：传感器的噪声比触摸大得多，不做低通的话摇杆会一直在抖。
      */
     fun update(rollRad: Float): Float {
-        val target = shape(deltaDegrees(rollRad))
-        output += (target - output) * smoothing.coerceIn(0f, 1f)
+        val current = settings
+        val target = shape(deltaDegrees(rollRad), current)
+        output += (target - output) * current.smoothing.coerceIn(0f, 1f)
         return output
     }
 
@@ -54,30 +57,26 @@ class TiltSolver(
     }
 
     /**
-     * 死区 → 线性 → 饱和。
+     * 死区 → 曲线 → 饱和。
      *
      * 出死区后是从 0 连续长起来的（把死区宽度减掉），不是从死区边界直接跳一段——
      * 后者在回中的瞬间会"啪"地弹一下。
      */
-    private fun shape(degrees: Float): Float {
+    private fun shape(degrees: Float, settings: TiltSettings): Float {
         val magnitude = abs(degrees)
-        if (magnitude <= deadZoneDeg) return 0f
+        if (magnitude <= settings.deadZoneDeg) return 0f
 
-        val usable = maxAngleDeg - deadZoneDeg
+        val usable = settings.maxAngleDeg - settings.deadZoneDeg
         if (usable <= 0f) return if (degrees < 0f) -1f else 1f
 
-        val unit = ((magnitude - deadZoneDeg) / usable).coerceAtMost(1f)
-        return if (degrees < 0f) -unit else unit
+        val travel = ((magnitude - settings.deadZoneDeg) / usable).coerceAtMost(1f)
+        val curved = travel.pow(settings.curve.coerceIn(MIN_CURVE, MAX_CURVE))
+        return if (degrees < 0f) -curved else curved
     }
 
     companion object {
-        /** 推到 ±25° 算满舵。赛车游戏一般在 ±20~30°，再大手腕就拧不动了。 */
-        const val DEFAULT_MAX_ANGLE_DEG = 25f
-
-        /** ±2.5° 以内不动，不然手一抖摇杆就飘。 */
-        const val DEFAULT_DEAD_ZONE_DEG = 2.5f
-
-        /** 低通系数。游戏传感器 50Hz 下，时间常数约 80ms。 */
-        const val DEFAULT_SMOOTHING = 0.25f
+        /** 曲线指数的可用范围。再往外就成了一根折线，没有实用价值。 */
+        const val MIN_CURVE = 0.2f
+        const val MAX_CURVE = 3f
     }
 }

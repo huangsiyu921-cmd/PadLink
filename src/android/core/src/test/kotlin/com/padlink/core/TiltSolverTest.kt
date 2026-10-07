@@ -7,8 +7,23 @@ import kotlin.test.assertTrue
 
 class TiltSolverTest {
 
-    /** 去掉平滑，单测解算本身；平滑单独测。 */
-    private fun solver() = TiltSolver(smoothing = 1f)
+    /**
+     * 默认是一组"教科书"参数（线性、无平滑），按手算的数值验形状。
+     * 给真机手感的默认值（1.5° / 35° / 0.75）验算起来不好看，曲线那几条单独测。
+     */
+    private fun solver(
+        deadZone: Float = 2.5f,
+        maxAngle: Float = 25f,
+        curve: Float = 1f,
+        smoothing: Float = 1f,
+    ) = TiltSolver(
+        TiltSettings(
+            deadZoneDeg = deadZone,
+            maxAngleDeg = maxAngle,
+            curve = curve,
+            smoothing = smoothing,
+        )
+    )
 
     private fun deg(value: Double): Float = (value * PI / 180.0).toFloat()
 
@@ -88,18 +103,17 @@ class TiltSolverTest {
     }
 
     @Test
-    fun `中间位置线性`() {
+    fun `线性时中间位置正好一半`() {
         val tilt = solver()
         tilt.recenter(0f)
 
         // 死区 2.5°，满舵 25°，可用 22.5°。推到 13.75° 正好是可用行程的一半。
-        val value = tilt.update(deg(13.75))
-        assertAxis(0.5f, value)
+        assertAxis(0.5f, tilt.update(deg(13.75)))
     }
 
     @Test
     fun `平滑会让第一步只走一部分`() {
-        val tilt = TiltSolver(smoothing = 0.5f)
+        val tilt = solver(smoothing = 0.5f)
         tilt.recenter(0f)
 
         assertAxis(0.5f, tilt.update(deg(25.0)))
@@ -118,5 +132,51 @@ class TiltSolverTest {
         // 零点回到 0°，所以 30° 不再是中立，而是推满。
         assertEquals(0f, tilt.update(0f))
         assertAxis(1f, tilt.update(deg(30.0)))
+    }
+
+    // ------------------------------------------------------------------ 曲线
+
+    @Test
+    fun `曲线小于一时初段更灵`() {
+        val linear = solver(curve = 1f).apply { recenter(0f) }.update(deg(11.25))
+        val quick = solver(curve = 0.5f).apply { recenter(0f) }.update(deg(11.25))
+
+        assertTrue(quick > linear, "0.5 的初段该比线性大，实际 $quick vs $linear")
+    }
+
+    @Test
+    fun `曲线大于一时初段更缓`() {
+        val linear = solver(curve = 1f).apply { recenter(0f) }.update(deg(11.25))
+        val gentle = solver(curve = 2f).apply { recenter(0f) }.update(deg(11.25))
+
+        assertTrue(gentle < linear, "2.0 的初段该比线性小，实际 $gentle vs $linear")
+    }
+
+    @Test
+    fun `曲线是平方根时半行程约等于零点七零七`() {
+        val tilt = solver(curve = 0.5f)
+        tilt.recenter(0f)
+
+        assertAxis(0.7071f, tilt.update(deg(13.75)))
+    }
+
+    @Test
+    fun `曲线不影响两端`() {
+        val tilt = solver(curve = 0.4f)
+        tilt.recenter(0f)
+
+        assertEquals(0f, tilt.update(deg(1.0)))
+        assertAxis(1f, tilt.update(deg(25.0)))
+        assertAxis(-1f, tilt.update(deg(-25.0)))
+    }
+
+    @Test
+    fun `曲线指数超出范围时夹住而不是炸掉`() {
+        val tilt = solver(curve = 0f)
+        tilt.recenter(0f)
+
+        // 夹到 0.2，不该出现 NaN / 无穷。
+        val value = tilt.update(deg(20.0))
+        assertTrue(value in 0f..1f, "越界的曲线参数也该给出合理值，实际 $value")
     }
 }

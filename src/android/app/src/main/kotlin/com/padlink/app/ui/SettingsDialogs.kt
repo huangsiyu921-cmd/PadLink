@@ -18,6 +18,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -231,6 +232,45 @@ fun AppSettingsDialog(
                         onClick = { controller.recenterTilt() },
                         enabled = controller.tiltEnabled,
                     ) { Text("重定中心", fontSize = 13.sp) }
+
+                    // 手感四件套。拖的时候实时生效，松手才落盘。
+                    val tilt = controller.tiltSettings
+
+                    TiltSlider(
+                        label = "死区",
+                        display = "%.1f°".format(tilt.deadZoneDeg),
+                        value = tilt.deadZoneDeg,
+                        range = 0f..6f,
+                        onDrag = { controller.applyTiltSettings(tilt.copy(deadZoneDeg = it), persist = false) },
+                        onDrop = { controller.applyTiltSettings(controller.tiltSettings, persist = true) },
+                    )
+
+                    TiltSlider(
+                        label = "满舵角",
+                        display = "%.0f°".format(tilt.maxAngleDeg),
+                        value = tilt.maxAngleDeg,
+                        range = 15f..60f,
+                        onDrag = { controller.applyTiltSettings(tilt.copy(maxAngleDeg = it), persist = false) },
+                        onDrop = { controller.applyTiltSettings(controller.tiltSettings, persist = true) },
+                    )
+
+                    TiltSlider(
+                        label = "曲线",
+                        display = curveLabel(tilt.curve),
+                        value = tilt.curve,
+                        range = 0.2f..3f,
+                        onDrag = { controller.applyTiltSettings(tilt.copy(curve = it), persist = false) },
+                        onDrop = { controller.applyTiltSettings(controller.tiltSettings, persist = true) },
+                    )
+
+                    TiltSlider(
+                        label = "平滑",
+                        display = "%.2f".format(tilt.smoothing),
+                        value = tilt.smoothing,
+                        range = 0.05f..0.8f,
+                        onDrag = { controller.applyTiltSettings(tilt.copy(smoothing = it), persist = false) },
+                        onDrop = { controller.applyTiltSettings(controller.tiltSettings, persist = true) },
+                    )
                 } else {
                     Text("这台机器没有陀螺仪", color = HintColor, fontSize = 12.sp)
                 }
@@ -395,4 +435,42 @@ private fun NumberField(
         TextButton(onClick = { onValueChange(value - step) }) { Text("－", fontSize = 15.sp) }
         TextButton(onClick = { onValueChange(value + step) }) { Text("＋", fontSize = 15.sp) }
     }
+}
+
+/**
+ * 重力转向的一个手感参数。拖的时候实时生效，松手才落盘
+ * （见 [PadLinkController.applyTiltSettings]）。
+ */
+@Composable
+private fun TiltSlider(
+    label: String,
+    display: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    onDrag: (Float) -> Unit,
+    onDrop: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(label, color = HintColor, fontSize = 12.sp)
+            Text(display, color = HintColor, fontSize = 12.sp)
+        }
+
+        Slider(
+            value = value,
+            onValueChange = onDrag,
+            onValueChangeFinished = onDrop,
+            valueRange = range,
+        )
+    }
+}
+
+/** 曲线指数光看数字没概念，直接说它是"哪一头快"。 */
+private fun curveLabel(curve: Float): String = when {
+    curve < 0.8f -> "初段快 · %.2f".format(curve)
+    curve > 1.25f -> "初段慢 · %.2f".format(curve)
+    else -> "线性 · %.2f".format(curve)
 }

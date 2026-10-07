@@ -7,6 +7,7 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.view.Surface
 import android.view.WindowManager
+import com.padlink.core.TiltSettings
 import com.padlink.core.TiltSolver
 
 /**
@@ -34,6 +35,13 @@ class TiltSource(context: Context) : SensorEventListener {
 
     /** 每解算出一个新值回调一次。调用方负责写进输入状态。 */
     var onTilt: ((Float) -> Unit)? = null
+
+    /** 手感参数。改完立刻生效，不用重新定零点。 */
+    var settings: TiltSettings
+        get() = solver.settings
+        set(value) {
+            solver.settings = value
+        }
 
     private val rotationMatrix = FloatArray(9)
     private val remapped = FloatArray(9)

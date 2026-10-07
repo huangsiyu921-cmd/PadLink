@@ -4,12 +4,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.padlink.app.input.PadInputState
+import com.padlink.app.input.TiltSettingsStore
 import com.padlink.app.input.TiltSource
 import com.padlink.app.transport.FramePump
 import com.padlink.app.transport.PumpStats
 import com.padlink.app.transport.TcpTransport
 import com.padlink.app.transport.UdpTransport
 import com.padlink.core.ProtocolConstants
+import com.padlink.core.TiltSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -33,6 +35,7 @@ sealed interface LinkStatus {
 class PadLinkController(
     private val scope: CoroutineScope,
     private val tilt: TiltSource,
+    private val tiltStore: TiltSettingsStore,
 ) {
 
     val input = PadInputState()
@@ -41,9 +44,14 @@ class PadLinkController(
     var tiltEnabled by mutableStateOf(false)
         private set
 
+    /** 重力转向的手感参数。拖滑杆时实时生效，松手才落盘。 */
+    var tiltSettings by mutableStateOf(tiltStore.load())
+        private set
+
     val tiltAvailable: Boolean get() = tilt.isAvailable
 
     init {
+        tilt.settings = tiltSettings
         tilt.onTilt = { value ->
             input.setTiltX(value)
             push()
@@ -141,6 +149,16 @@ class PadLinkController(
     /** 以当前姿态为零点。玩到一半换了姿势（躺下、翘腿）之后调一次。 */
     fun recenterTilt() {
         if (tiltEnabled) tilt.recenter()
+    }
+
+    /**
+     * 改手感参数。拖滑杆的过程中实时生效（[persist] = false），松手时才落盘——
+     * 拖一下写几十次盘没必要。
+     */
+    fun applyTiltSettings(settings: TiltSettings, persist: Boolean) {
+        tiltSettings = settings
+        tilt.settings = settings
+        if (persist) tiltStore.save(settings)
     }
 
     /** 界面要走了：收连接、关传感器。 */
